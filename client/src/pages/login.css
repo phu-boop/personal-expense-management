@@ -1,0 +1,88 @@
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg-main) url('https://images.unsplash.com/photo-1616077168079-7e0908d075fb?q=80&w=2000&auto=format&fit=crop') center/cover no-repeat;
+  position: relative;
+}
+
+.login-page::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(247, 249, 252, 0.85); /* Semi-transparent overlay to match var(--bg-main) */
+  backdrop-filter: blur(8px);
+}
+
+.login-container {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: var(--space-8);
+  margin: var(--space-4);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: var(--shadow-xl), 0 20px 40px rgba(0,0,0,0.1);
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto var(--space-4);
+  background: var(--primary-light);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.login-header h1 {
+  font-size: var(--text-2xl);
+  margin-bottom: var(--space-2);
+  color: var(--text-primary);
+}
+
+.login-header p {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-8);
+}
+
+.login-error {
+  background-color: var(--expense-light);
+  color: var(--expense);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.google-auth-wrapper {
+  display: flex;
+  justify-content: center;
+  min-height: 44px; /* Google button height */
+}
+
+.loading-spinner {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+}
+
+.login-footer {
+  margin-top: var(--space-8);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-6);
+}
+
+.login-footer p {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

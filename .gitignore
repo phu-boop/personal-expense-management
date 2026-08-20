@@ -1,38 +1,62 @@
-# dependencies
+# Dependencies
 node_modules/
+.pnpm-store/
 
-# testing
-coverage/
+# Environment variables
+.env
+.env.*
+!.env.example
 
-# production builds
+# Build
 dist/
 build/
-client/dist/
-server/dist/
+out/
+.next/
+coverage/
 
-# misc
-.DS_Store
-*.pem
-
-# debug logs
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
+pnpm-debug.log*
 
-# local env files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# OS
+.DS_Store
+Thumbs.db
 
-# typescript
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# TypeScript
 *.tsbuildinfo
 
-# IDEs
-.idea/
-.vscode/
-*.swp
+# Testing
+.nyc_output/
 
-# AI Agents
-.agents/
+# Temporary files
+tmp/
+temp/
+
+# Docker
+docker-data/
+
+# Generated reports
+reports/
+*.pdf
+*.xlsx
+
+# Local database / uploads
+uploads/
+data/
+
+# Secrets / certificates
+*.pem
+*.key
+*.crt
+
+# Agent
+.agent/
