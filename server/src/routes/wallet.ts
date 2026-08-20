@@ -8,8 +8,8 @@ router.use(authenticate);
 // Create a new wallet
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { name, accountNumber, initialBalance, startDate } = req.body;
-    
+    const { name, accountNumber, initialBalance, startDate, colorTheme } = req.body;
+
     if (!name || initialBalance === undefined || !startDate) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
@@ -20,6 +20,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       accountNumber,
       initialBalance,
       currentBalance: initialBalance,
+      colorTheme: colorTheme || 'emerald',
       startDate: new Date(startDate),
     });
 

@@ -74,7 +74,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const { walletId, page = 1, limit = 50 } = req.query;
-    
+
     const query: any = { userId: req.user!.id };
     if (walletId) {
       query.walletId = walletId;
@@ -158,6 +158,81 @@ router.get('/statement', async (req: AuthRequest, res: Response) => {
         closingBalance,
       },
       transactions,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Insights API
+router.get('/insights', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const now = new Date();
+
+    // 1. Chart Data (Last 6 Months)
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    const monthlyData = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: { month: { $month: '$date' }, year: { $year: '$date' } },
+          income: { $sum: { $cond: [{ $eq: ['$type', TransactionType.INCOME] }, '$amount', 0] } },
+          expense: { $sum: { $cond: [{ $eq: ['$type', TransactionType.EXPENSE] }, '$amount', 0] } }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    const formattedMonthlyData = monthlyData.map(item => ({
+      name: `${item._id.month}/${item._id.year}`,
+      Income: item.income,
+      Expense: item.expense
+    }));
+
+    // 2. Category Breakdown (Current Month)
+    const firstDayCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const categoryData = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: TransactionType.EXPENSE,
+          date: { $gte: firstDayCurrentMonth }
+        }
+      },
+      {
+        $group: {
+          _id: '$category',
+          value: { $sum: '$amount' }
+        }
+      },
+      { $sort: { value: -1 } }
+    ]);
+
+    const formattedCategoryData = categoryData.map(item => ({
+      name: item._id,
+      value: item.value
+    }));
+
+    // 3. Mini Insight (Compare with last month or highlight highest category)
+    let insightMessage = "Keep tracking your expenses!";
+    if (formattedCategoryData.length > 0) {
+      const highestCategory = formattedCategoryData[0];
+      insightMessage = `You spent the most on ${highestCategory.name} this month (${highestCategory.value.toLocaleString('vi-VN')} VND).`;
+    }
+
+    res.json({
+      monthlyChart: formattedMonthlyData,
+      categoryChart: formattedCategoryData,
+      insightMessage
     });
   } catch (error) {
     console.error(error);

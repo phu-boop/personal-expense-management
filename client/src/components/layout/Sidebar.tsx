@@ -11,7 +11,7 @@ const Sidebar: React.FC = () => {
           <span>FinaVault</span>
         </NavLink>
       </div>
-      
+
       <nav className="sidebar-nav">
         <NavLink to="/" className={({isActive}) => `nav-item ${isActive ? 'active' : ''}`} end>
           <LayoutDashboard size={20} />
@@ -30,7 +30,7 @@ const Sidebar: React.FC = () => {
           <span>Statement</span>
         </NavLink>
       </nav>
-      
+
       <div className="sidebar-nav" style={{ flex: 'none', paddingBottom: '24px' }}>
         <a href="#" className="nav-item">
           <Settings size={20} />

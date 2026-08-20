@@ -14,28 +14,6 @@
   margin-bottom: var(--space-1);
 }
 
-.btn-primary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.btn-secondary {
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-6);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background-color: var(--bg-main);
-  color: var(--text-primary);
-}
-
 /* List UI */
 .transaction-list-card {
   padding: 0;
@@ -85,13 +63,28 @@
 }
 
 .filter-select {
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background-color: white;
+  background-color: var(--surface);
+  color: var(--text-primary);
   font-family: inherit;
   font-size: var(--text-sm);
   outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 150px;
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-select:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.filter-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light);
 }
 
 .transaction-list {
@@ -171,6 +164,110 @@
 .tx-date {
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* Custom Select Dropdown UI */
+.custom-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.chevron-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+.custom-select-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+.custom-select-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 100%;
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  max-height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+}
+.custom-select-option {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  transition: background-color 0.2s;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.custom-select-option:hover {
+  background-color: var(--bg-main);
+}
+.custom-select-option.selected {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Date Grouping */
+.date-group {
+  margin-bottom: var(--space-4);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.date-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--bg-main);
+  border-bottom: 1px solid var(--border);
+}
+
+.date-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.date-summary {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.date-summary .income-sum {
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.date-summary .expense-sum {
+  color: var(--expense);
+  background: var(--expense-light);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.date-group-items {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Modal UI */

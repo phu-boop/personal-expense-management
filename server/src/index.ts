@@ -28,7 +28,7 @@ const startServer = async () => {
     const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/expense_manager';
     await mongoose.connect(mongoUri);
     console.log('Connected to MongoDB');
-    
+
     app.listen(port, () => {
       console.log(`Server is running on port ${port}`);
     });

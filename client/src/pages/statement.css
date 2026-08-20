@@ -11,15 +11,22 @@
 
 .filters-card {
   display: flex;
+  align-items: flex-end;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
+  position: relative;
+  z-index: 20;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
   flex: 1;
+}
+
+.filter-group.button-group {
+  flex: 0 0 auto;
 }
 
 .filter-group label {
@@ -30,6 +37,7 @@
   letter-spacing: 0.05em;
 }
 
+/* Summary Grid */
 .statement-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -76,14 +84,17 @@
   color: var(--expense);
 }
 
+/* Table Card */
 .statement-table-card {
   padding: 0;
-  overflow: hidden;
   overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
 }
 
 .statement-table {
   width: 100%;
+  min-width: 650px; /* Ensures clean layout with smooth horizontal scroll on mobile */
   border-collapse: collapse;
   text-align: left;
 }
@@ -145,55 +156,49 @@
   color: var(--text-primary);
 }
 
+/* Responsive Breakpoints */
 @media (max-width: 1024px) {
   .filters-card {
     flex-direction: column;
+    align-items: stretch;
   }
+
+  .filter-group.button-group {
+    width: 100%;
+  }
+
+  .filter-group.button-group .btn-primary {
+    width: 100%;
+    margin-top: var(--space-2);
+  }
+
   .statement-summary-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .header-actions {
+  .page-header {
     flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .header-actions {
+    flex-direction: row;
     width: 100%;
   }
-  .btn-secondary {
-    width: 100%;
+
+  .header-actions .btn-secondary {
+    flex: 1;
     justify-content: center;
   }
+
   .statement-summary-grid {
     grid-template-columns: 1fr;
   }
-  /* Convert Table to Cards */
-  .statement-table thead {
-    display: none;
-  }
-  .statement-table, .statement-table tbody, .statement-table tr, .statement-table td {
-    display: block;
-    width: 100%;
-  }
-  .statement-table tr {
-    padding: var(--space-4);
-    border-bottom: 4px solid var(--bg-main);
-  }
-  .statement-table td {
-    border-bottom: none;
-    padding: var(--space-1) 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    text-align: right;
-  }
-  .statement-table td::before {
-    content: attr(data-label);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-  .tx-desc, .tx-cat {
-    text-align: right;
+
+  .summary-item {
+    padding: var(--space-3) var(--space-4);
   }
 }

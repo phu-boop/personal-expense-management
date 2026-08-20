@@ -19,12 +19,12 @@ const Login: React.FC = () => {
       const response = await api.post('/api/auth/google', {
         token: credentialResponse.credential
       });
-      
+
       const { token, user } = response.data;
-      
+
       // Store in context (which will also redirect or update state)
       login(token, user);
-      
+
       // Redirect to home
       window.location.href = '/';
     } catch (err) {
@@ -48,10 +48,10 @@ const Login: React.FC = () => {
           <h1>Welcome to FinaVault</h1>
           <p>Track your expenses seamlessly and secure your financial future.</p>
         </div>
-        
+
         <div className="login-body">
           {error && <div className="login-error">{error}</div>}
-          
+
           <div className="google-auth-wrapper">
             {isLoading ? (
               <div className="loading-spinner">Authenticating...</div>
@@ -68,7 +68,7 @@ const Login: React.FC = () => {
             )}
           </div>
         </div>
-        
+
         <div className="login-footer">
           <p>By continuing, you agree to our Terms of Service and Privacy Policy.</p>
         </div>
