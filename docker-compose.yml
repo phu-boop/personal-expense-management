@@ -11,6 +11,8 @@ services:
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
+    env_file:
+      - ./client/.env
     depends_on:
       - server
 
@@ -25,6 +27,8 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017/expense_manager
       - PORT=5000
+    env_file:
+      - ./server/.env
     depends_on:
       - mongo
 
