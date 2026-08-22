@@ -132,7 +132,7 @@ const Statement: React.FC = () => {
       setIsExporting(true);
 
       const fileName = `statement_${startDate}_to_${endDate}.${format}`;
-      const taskId = addExportQueueTask(fileName, 'Đang chuẩn bị tệp...', 18);
+      const taskId = addExportQueueTask(fileName, 'Preparing file...', 18);
 
       const payload = {
         walletId: walletId || undefined,
@@ -143,7 +143,7 @@ const Statement: React.FC = () => {
 
       const createRes = await api.post('/api/exports', payload);
       const jobId = createRes.data.jobId;
-      updateExportQueueTask(taskId, { step: 'Đang tạo báo cáo...', progress: 35 });
+      updateExportQueueTask(taskId, { step: 'Generating report...', progress: 35 });
 
       let pollAttempts = 0;
       const maxPollAttempts = 40;
@@ -167,7 +167,7 @@ const Statement: React.FC = () => {
 
         if (status === 'COMPLETED') {
           updateExportQueueTask(taskId, {
-            step: 'Đã sẵn sàng để tải xuống',
+            step: 'Ready to download',
             status: 'done',
             progress: 100,
           });
@@ -210,7 +210,7 @@ const Statement: React.FC = () => {
         }
 
         updateExportQueueTask(taskId, {
-          step: 'Đang tạo báo cáo...',
+          step: 'Generating report...',
           progress: Math.min(90, 35 + pollAttempts * 2),
         });
 
@@ -250,7 +250,7 @@ const Statement: React.FC = () => {
       {exportQueue.length > 0 && ReactDOM.createPortal(
         <div className="export-queue-floating">
           <div className="export-queue-panel">
-            <div className="export-queue-header">Đang xử lý: {exportQueue.filter((task) => task.status === 'processing').length || 1}</div>
+            <div className="export-queue-header">Processing: {exportQueue.filter((task) => task.status === 'processing').length || 1}</div>
             {exportQueue.map((task) => (
               <div key={task.id} className={`export-queue-card ${task.status}`}>
                 <div className="export-progress-bar">

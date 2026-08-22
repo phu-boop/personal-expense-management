@@ -5,6 +5,7 @@ import Wallet from './models/Wallet';
 import { buildExportTransactionFilter } from './services/exportJobService';
 import { calculateStatementSummary } from './services/statementSummaryService';
 import { createStatementPdfBuffer, createStatementXlsxBuffer } from './services/exportDocumentService';
+import { generateAndSaveExport } from './services/exportProcessorService';
 import { createRedisQueueFromEnvironment } from './services/redisQueue';
 import { createWorkerMetrics } from './services/workerMetrics';
 import fs from 'node:fs/promises';
@@ -36,91 +37,7 @@ const processExportJob = async (jobId: string, queue: Awaited<ReturnType<typeof 
   const startedAt = Date.now();
 
   try {
-    const filePath = buildExportFilePath(mongoJob._id.toString(), mongoJob.format);
-    const filter = buildExportTransactionFilter(
-      mongoJob.tenantId.toString(),
-      mongoJob.userId.toString(),
-      {
-        walletId: mongoJob.filters.walletId?.toString(),
-        startDate: mongoJob.filters.startDate,
-        endDate: mongoJob.filters.endDate,
-      },
-    );
-    const rows = await Transaction.find(filter).sort({ date: -1, createdAt: -1 }).lean();
-
-    const exportRows = rows.map((tx) => ({
-      date: new Date(tx.date).toISOString().split('T')[0],
-      category: tx.category,
-      note: tx.note || '',
-      type: tx.type,
-      amount: tx.amount,
-      balanceAfter: tx.balanceAfter,
-    }));
-
-    const periodStart = new Date(mongoJob.filters.startDate);
-    const periodEnd = new Date(mongoJob.filters.endDate);
-    const periodQuery: Record<string, unknown> = {
-      tenantId: mongoJob.tenantId,
-      userId: mongoJob.userId,
-      date: { $gte: periodStart, $lte: periodEnd },
-    };
-
-    if (mongoJob.filters.walletId) {
-      periodQuery.walletId = mongoJob.filters.walletId;
-    }
-
-    const summaryResult = await Transaction.aggregate([
-      { $match: periodQuery },
-      {
-        $group: {
-          _id: null,
-          totalIncome: { $sum: { $cond: [{ $eq: ['$type', TransactionType.INCOME] }, '$amount', 0] } },
-          totalExpense: { $sum: { $cond: [{ $eq: ['$type', TransactionType.EXPENSE] }, '$amount', 0] } },
-        },
-      },
-    ]);
-
-    const wallets = await Wallet.find({
-      tenantId: mongoJob.tenantId,
-      userId: mongoJob.userId,
-      ...(mongoJob.filters.walletId ? { _id: mongoJob.filters.walletId } : {}),
-    }).select('_id initialBalance currentBalance').lean();
-
-    const openingBalances = await Transaction.aggregate([
-      {
-        $match: {
-          tenantId: mongoJob.tenantId,
-          userId: mongoJob.userId,
-          date: { $lt: periodStart },
-          ...(mongoJob.filters.walletId ? { walletId: mongoJob.filters.walletId } : {}),
-        },
-      },
-      { $sort: { date: -1, createdAt: -1, _id: -1 } },
-      { $group: { _id: '$walletId', balanceAfter: { $first: '$balanceAfter' } } },
-    ]);
-
-    const openingByWallet = new Map(openingBalances.map((item) => [item._id.toString(), item.balanceAfter]));
-    const summary = calculateStatementSummary({
-      wallets: wallets.map((wallet) => ({ _id: wallet._id.toString(), initialBalance: wallet.initialBalance })),
-      openingByWallet,
-      totalIncome: summaryResult[0]?.totalIncome ?? 0,
-      totalExpense: summaryResult[0]?.totalExpense ?? 0,
-    });
-
-    const reportRange = { startDate: mongoJob.filters.startDate, endDate: mongoJob.filters.endDate };
-    const fileBuffer = mongoJob.format === 'pdf'
-      ? await createStatementPdfBuffer(exportRows, summary, reportRange)
-      : createStatementXlsxBuffer(exportRows, summary, reportRange);
-
-    await ensureExportDirectory();
-    await fs.writeFile(filePath, fileBuffer);
-
-    mongoJob.status = ExportJobStatus.COMPLETED;
-    mongoJob.fileKey = `${mongoJob._id.toString()}.${mongoJob.format}`;
-    mongoJob.completedAt = new Date();
-    mongoJob.error = undefined;
-    await mongoJob.save();
-
+    await generateAndSaveExport(mongoJob);
     workerMetrics.recordJobProcessed(Date.now() - startedAt);
     return true;
   } catch (error) {
