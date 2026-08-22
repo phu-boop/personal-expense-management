@@ -2,7 +2,7 @@ services:
   client:
     build:
       context: ./client
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
     ports:
       - "5173:5173"
@@ -20,7 +20,7 @@ services:
   server:
     build:
       context: ./server
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     ports:
       - "5000:5000"
@@ -51,7 +51,7 @@ services:
   worker:
     build:
       context: ./server
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     command: ["npm", "run", "worker"]
     volumes:
       - ./server:/app

@@ -135,7 +135,7 @@ The primary technical references are kept in the docs directory:
 - [docs/dev-guide.md](docs/dev-guide.md) — local workflow and troubleshooting notes
 - [docs/advanced-performance.md](docs/advanced-performance.md) — scale, export, and multi-tenant design targets
 
-## Quick start for HR / reviewers
+## Quick start
 
 ```bash
 chmod +x scripts/setup-env.sh
