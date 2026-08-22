@@ -137,6 +137,28 @@ The primary technical references are kept in the docs directory:
 
 ## Running the project
 
+### Required environment setup before Docker
+
+This project expects the real env files to exist before startup. If they are missing, Docker will not run correctly and the app will show clear configuration errors instead of silently failing.
+
+```bash
+cp client/.env.example client/.env
+cp server/.env.example server/.env
+```
+
+Then fill in the required values in those files:
+
+- `client/.env`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`
+- `server/.env`: `PORT`, `MONGO_URI`, `REDIS_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `CORS_ORIGIN`
+
+Important:
+
+- `JWT_SECRET` must be a real secure random string.
+- `GOOGLE_CLIENT_ID` in the server must match the same value used by `VITE_GOOGLE_CLIENT_ID` in the client.
+- Do not commit real `.env` files. Only `.env.example` files are safe to keep in the repo.
+
+If any required value is still left as a placeholder such as `replace_with_...` or `your-google-client-id-here`, the application will fail fast with a clear startup message telling you exactly which variable must be updated.
+
 ### With Docker
 
 ```bash
