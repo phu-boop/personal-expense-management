@@ -6,20 +6,15 @@ import User, { UserRole } from '../models/User';
 
 const router = express.Router();
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim();
-const JWT_SECRET = process.env.JWT_SECRET?.trim();
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim() || 'demo-google-client-id.apps.googleusercontent.com';
+const JWT_SECRET = process.env.JWT_SECRET?.trim() || 'demo-dev-secret-change-me-please-change-this-value';
 
-if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.includes('your-google-client-id-here')) {
-  throw new Error(
-    'GOOGLE_CLIENT_ID is required and must match the Google OAuth client ID used by the frontend. ' +
-      'Update server/.env so it equals the same value as VITE_GOOGLE_CLIENT_ID.'
-  );
+if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID.includes('your-google-client-id-here') || process.env.GOOGLE_CLIENT_ID.includes('demo-google-client-id')) {
+  console.warn('Google OAuth is running in demo mode. Replace GOOGLE_CLIENT_ID and VITE_GOOGLE_CLIENT_ID with a real client ID for sign-in to work.');
 }
 
-if (!JWT_SECRET || JWT_SECRET.includes('replace_with_')) {
-  throw new Error(
-    'JWT_SECRET is required and should be a real secret value for local/dev usage. Update server/.env with a secure random string.'
-  );
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('replace_with_') || process.env.JWT_SECRET.length < 32) {
+  console.warn('JWT_SECRET is using a fallback demo value. Replace it with a real secret for secure authentication.');
 }
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);

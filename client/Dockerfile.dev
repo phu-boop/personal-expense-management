@@ -5,28 +5,3 @@ RUN npm install
 COPY . .
 EXPOSE 5173
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
-4d6c911f19643f70d9aa29cd1fbda93ca05dbc40e 
-
-
-> server@1.0.0 dev
-> tsx watch src/index.ts --host 0.0.0.0
-
-◇ injected env (0) from .env // tip: ⌘ multiple files { path:['.env.local', '.env'] }
-Connected to MongoDB
-Connected to Redis
-Server is running on port 5000
-Google Auth Error: Error: Wrong recipient, payload audience != requiredAudience
-    at OAuth2Client.verifySignedJwtWithCertsAsync (/app/node_modules/google-auth-library/build/src/auth/oauth2client.js:787:23)
-    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-    at async OAuth2Client.verifyIdTokenAsync (/app/node_modules/google-auth-library/build/src/auth/oauth2client.js:541:23)
-    at async <anonymous> (/app/src/routes/auth.ts:58:20)
-Google Auth Error: Error: Wrong recipient, payload audience != requiredAudience
-    at OAuth2Client.verifySignedJwtWithCertsAsync (/app/node_modules/google-auth-library/build/src/auth/oauth2client.js:787:23)
-    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-    at async OAuth2Client.verifyIdTokenAsync (/app/node_modules/google-auth-library/build/src/auth/oauth2client.js:541:23)
-    at async <anonymous> (/app/src/routes/auth.ts:58:20)
-Google Auth Error: Error: Wrong recipient, payload audience != requiredAudience
-    at OAuth2Client.verifySignedJwtWithCertsAsync (/app/node_modules/google-auth-library/build/src/auth/oauth2client.js:787:23)
-    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-    at async OAuth2Client.verifyIdTokenAsync (/app/node_modules/google-auth-library/build/src/auth/oauth2client.js:541:23)
-    at async <anonymous> (/app/src/routes/auth.ts:58:20)

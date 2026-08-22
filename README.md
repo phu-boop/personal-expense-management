@@ -135,6 +135,31 @@ The primary technical references are kept in the docs directory:
 - [docs/dev-guide.md](docs/dev-guide.md) — local workflow and troubleshooting notes
 - [docs/advanced-performance.md](docs/advanced-performance.md) — scale, export, and multi-tenant design targets
 
+## Quick start for HR / reviewers
+
+```bash
+chmod +x scripts/setup-env.sh
+./scripts/setup-env.sh
+```
+
+This single script will:
+
+- create `client/.env` and `server/.env` from the example files if they do not exist
+- auto-fill safe demo defaults for a first-run local setup
+- keep the app bootable even before a real Google OAuth client ID is configured
+- start Docker Compose automatically from the project root
+
+Important:
+
+- Google sign-in will still need a real OAuth client ID if you want the login flow to work fully.
+- The app will start in demo mode so the system is runnable without a deep technical setup.
+
+Then open:
+
+- Frontend: http://localhost:5173
+- Backend: http://localhost:5000
+- Health: http://localhost:5000/api/ready
+
 ## Running the project
 
 ### Required environment setup before Docker
