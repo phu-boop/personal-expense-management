@@ -1,0 +1,76 @@
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required. Set it in the server .env file before starting the app.');
+}
+
+export interface AuthRequest extends Request {
+  user?: {
+    id: mongoose.Types.ObjectId;
+    email: string;
+    tenantId?: mongoose.Types.ObjectId;
+    role?: string;
+  };
+}
+
+const READ_ROLES = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
+const WRITE_ROLES = ['OWNER', 'ADMIN', 'MEMBER'];
+
+export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const headerToken = req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
+  const token = headerToken || queryToken;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+
+    if (!decoded?.id || !decoded?.email) {
+      return res.status(401).json({ message: 'Invalid token payload' });
+    }
+
+    if (!decoded?.tenantId) {
+      return res.status(401).json({ message: 'Tenant context is required' });
+    }
+
+    req.user = {
+      id: new mongoose.Types.ObjectId(decoded.id),
+      email: decoded.email,
+      tenantId: new mongoose.Types.ObjectId(decoded.tenantId),
+      role: decoded.role,
+    };
+
+    if (!req.user.tenantId) {
+      return res.status(401).json({ message: 'Tenant context is required' });
+    }
+
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
+export const requireReadAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userRole = req.user?.role?.toUpperCase();
+  if (!userRole || !READ_ROLES.includes(userRole)) {
+    return res.status(403).json({ message: 'Permission denied' });
+  }
+
+  next();
+};
+
+export const requireWriteAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const userRole = req.user?.role?.toUpperCase();
+  if (!userRole || !WRITE_ROLES.includes(userRole)) {
+    return res.status(403).json({ message: 'Write permission required' });
+  }
+
+  next();
+};

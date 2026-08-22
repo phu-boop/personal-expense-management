@@ -1,0 +1,361 @@
+import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { Download, Folder } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import api from '../api/api';
+import CustomSelect from '../components/CustomSelect';
+import CustomDatePicker from '../components/CustomDatePicker';
+import './statement.css';
+
+interface Summary {
+  openingBalance: number;
+  totalIncome: number;
+  totalExpense: number;
+  closingBalance: number;
+}
+
+interface Transaction {
+  _id: string;
+  type: 'INCOME' | 'EXPENSE';
+  amount: number;
+  category: string;
+  date: string;
+  note?: string;
+  balanceAfter: number;
+}
+
+interface Wallet {
+  _id: string;
+  name: string;
+}
+
+interface ExportQueueItem {
+  id: number;
+  fileName: string;
+  status: 'processing' | 'done' | 'error';
+  step: string;
+  progress: number;
+}
+
+const Statement: React.FC = () => {
+  const [summary, setSummary] = useState<Summary>({
+    openingBalance: 0,
+    totalIncome: 0,
+    totalExpense: 0,
+    closingBalance: 0
+  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const isExportingRef = useRef(false);
+  const [exportQueue, setExportQueue] = useState<ExportQueueItem[]>([]);
+
+  const [searchParams] = useSearchParams();
+  const initialWalletId = searchParams.get('walletId') || '';
+
+  const [walletId, setWalletId] = useState(initialWalletId);
+
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+  const [startDate, setStartDate] = useState(firstDay);
+  const [endDate, setEndDate] = useState(lastDay);
+
+  useEffect(() => {
+    api.get('/api/wallets')
+      .then(res => {
+        const walletList = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+        setWallets(walletList);
+      })
+      .catch(console.error);
+  }, []);
+
+  const fetchStatement = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({ startDate, endDate });
+      if (walletId) params.append('walletId', walletId);
+
+      const res = await api.get(`/api/transactions/statement?${params.toString()}`);
+      setSummary(res.data.summary);
+      setTransactions(res.data.transactions);
+    } catch (error) {
+      console.error('Failed to fetch statement:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const paramWalletId = searchParams.get('walletId');
+    if (paramWalletId) {
+      setWalletId(paramWalletId);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    fetchStatement();
+  }, [walletId, startDate, endDate]);
+
+  const handleGenerate = () => {
+    fetchStatement();
+  };
+
+  const addExportQueueTask = (fileName: string, step: string, progress: number): number => {
+    const taskId = Date.now() + Math.random();
+    const task: ExportQueueItem = {
+      id: taskId,
+      fileName,
+      status: 'processing',
+      step,
+      progress,
+    };
+
+    setExportQueue((previous) => [task, ...previous].slice(0, 3));
+    return taskId;
+  };
+
+  const updateExportQueueTask = (taskId: number, updates: Partial<ExportQueueItem>) => {
+    setExportQueue((previous) => previous.map((task) => (task.id === taskId ? { ...task, ...updates } : task)));
+  };
+
+  const exportFile = async (format: 'xlsx' | 'pdf') => {
+    if (isExportingRef.current) {
+      return;
+    }
+
+    isExportingRef.current = true;
+
+    try {
+      setIsExporting(true);
+
+      const fileName = `statement_${startDate}_to_${endDate}.${format}`;
+      const taskId = addExportQueueTask(fileName, 'Đang chuẩn bị tệp...', 18);
+
+      const payload = {
+        walletId: walletId || undefined,
+        startDate,
+        endDate,
+        format,
+      };
+
+      const createRes = await api.post('/api/exports', payload);
+      const jobId = createRes.data.jobId;
+      updateExportQueueTask(taskId, { step: 'Đang tạo báo cáo...', progress: 35 });
+
+      let pollAttempts = 0;
+      const maxPollAttempts = 40;
+
+      const pollForCompletion = async (): Promise<void> => {
+        pollAttempts += 1;
+
+        if (pollAttempts > maxPollAttempts) {
+          updateExportQueueTask(taskId, {
+            status: 'error',
+            step: 'Hết thời gian chờ xuất file',
+            progress: 100,
+          });
+          throw new Error('Export polling timed out.');
+        }
+
+        const jobRes = await api.get(`/api/exports/${jobId}`, {
+          headers: { 'Cache-Control': 'no-cache' },
+        });
+        const status = jobRes.data.status;
+
+        if (status === 'COMPLETED') {
+          updateExportQueueTask(taskId, {
+            step: 'Đã sẵn sàng để tải xuống',
+            status: 'done',
+            progress: 100,
+          });
+
+          const token = localStorage.getItem('token');
+          const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+          const downloadUrl = new URL(`${apiBaseUrl}/api/exports/${jobId}/download`);
+
+          if (token) {
+            downloadUrl.searchParams.set('token', token);
+          }
+
+          const popup = window.open(downloadUrl.toString(), '_blank', 'noopener,noreferrer');
+          if (!popup) {
+            const anchor = document.createElement('a');
+            anchor.href = downloadUrl.toString();
+            anchor.download = fileName;
+            anchor.target = '_blank';
+            anchor.rel = 'noopener noreferrer';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+          }
+
+          window.setTimeout(() => {
+            setExportQueue((previous) => previous.filter((task) => task.id !== taskId));
+          }, 1800);
+
+          setIsExporting(false);
+          return;
+        }
+
+        if (status === 'FAILED' || status === 'EXPIRED') {
+          updateExportQueueTask(taskId, {
+            status: 'error',
+            step: jobRes.data.message || 'Xuất file thất bại',
+            progress: 100,
+          });
+          throw new Error(jobRes.data.message || 'Export failed.');
+        }
+
+        updateExportQueueTask(taskId, {
+          step: 'Đang tạo báo cáo...',
+          progress: Math.min(90, 35 + pollAttempts * 2),
+        });
+
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        return pollForCompletion();
+      };
+
+      await pollForCompletion();
+    } catch (error) {
+      console.error('Failed to export statement:', error);
+      setIsExporting(false);
+    } finally {
+      isExportingRef.current = false;
+      if (!isExportingRef.current) {
+        setIsExporting(false);
+      }
+    }
+  };
+
+  return (
+    <div className="statement-page">
+      <header className="page-header">
+        <div>
+          <h1>Statement & Reports</h1>
+          <p className="subtitle">View detailed financial statements and export data.</p>
+        </div>
+        <div className="header-actions">
+          <button className="btn-secondary" onClick={() => exportFile('pdf')} disabled={isExporting}>
+            <Download size={18} /> {isExporting ? 'Exporting...' : 'Export PDF'}
+          </button>
+          <button className="btn-secondary" onClick={() => exportFile('xlsx')} disabled={isExporting}>
+            <Download size={18} /> {isExporting ? 'Exporting...' : 'Export Excel'}
+          </button>
+        </div>
+      </header>
+
+      {exportQueue.length > 0 && ReactDOM.createPortal(
+        <div className="export-queue-floating">
+          <div className="export-queue-panel">
+            <div className="export-queue-header">Đang xử lý: {exportQueue.filter((task) => task.status === 'processing').length || 1}</div>
+            {exportQueue.map((task) => (
+              <div key={task.id} className={`export-queue-card ${task.status}`}>
+                <div className="export-progress-bar">
+                  <span className="export-progress-fill" style={{ width: `${task.progress}%` }} />
+                </div>
+                <div className="export-task-name">{task.fileName}</div>
+                <div className="export-task-state">{task.step}</div>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <div className="card filters-card glass-panel animate-fade-in">
+        <div className="filter-group">
+          <label>Wallet</label>
+          <CustomSelect
+            value={walletId}
+            onChange={setWalletId}
+            options={[{ value: '', label: 'All Wallets' }, ...wallets.map(w => ({ value: w._id, label: w.name }))]}
+            placeholder="All Wallets"
+          />
+        </div>
+        <div className="filter-group">
+          <label>From Date</label>
+          <CustomDatePicker value={startDate} onChange={setStartDate} placeholder="From Date" />
+        </div>
+        <div className="filter-group">
+          <label>To Date</label>
+          <CustomDatePicker value={endDate} onChange={setEndDate} placeholder="To Date" />
+        </div>
+        <div className="filter-group button-group">
+          <button className="btn-primary" onClick={handleGenerate}>
+            Generate
+          </button>
+        </div>
+      </div>
+
+      <div className="statement-summary-grid animate-fade-in">
+        <div className="summary-item">
+          <div className="summary-label">Opening Balance</div>
+          <div className="summary-value">{summary.openingBalance.toLocaleString('vi-VN')} VND</div>
+        </div>
+        <div className="summary-item">
+          <div className="summary-label">Total Income</div>
+          <div className="summary-value income">+{summary.totalIncome.toLocaleString('vi-VN')} VND</div>
+        </div>
+        <div className="summary-item">
+          <div className="summary-label">Total Expense</div>
+          <div className="summary-value expense">-{summary.totalExpense.toLocaleString('vi-VN')} VND</div>
+        </div>
+        <div className="summary-item highlight">
+          <div className="summary-label">Closing Balance</div>
+          <div className="summary-value">{summary.closingBalance.toLocaleString('vi-VN')} VND</div>
+        </div>
+      </div>
+
+      <div className="card statement-table-card animate-fade-in">
+        {isLoading ? (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>Loading statement...</div>
+        ) : transactions.length === 0 ? (
+          <div className="empty-data-panel statement-empty-panel">
+            <div className="empty-data-icon">
+              <Folder size={28} />
+            </div>
+            <strong>No transactions found for this period.</strong>
+            <span>Choose another date range or add a new transaction to generate a statement.</span>
+          </div>
+        ) : (
+          <table className="statement-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th className="right-align">Income</th>
+                <th className="right-align">Expense</th>
+                <th className="right-align">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map(tx => (
+                <tr key={tx._id}>
+                  <td data-label="Date" className="tx-date-col">{new Date(tx.date).toLocaleDateString()}</td>
+                  <td data-label="Description">
+                    <div className="tx-desc">{tx.note || tx.category}</div>
+                    <div className="tx-cat">{tx.category}</div>
+                  </td>
+                  <td data-label="Income" className="right-align income-col">
+                    {tx.type === 'INCOME' ? `+${tx.amount.toLocaleString('vi-VN')} VND` : '-'}
+                  </td>
+                  <td data-label="Expense" className="right-align expense-col">
+                    {tx.type === 'EXPENSE' ? `-${tx.amount.toLocaleString('vi-VN')} VND` : '-'}
+                  </td>
+                  <td data-label="Balance" className="right-align balance-col">
+                    {tx.balanceAfter.toLocaleString('vi-VN')} VND
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Statement;
