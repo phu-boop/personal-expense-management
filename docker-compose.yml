@@ -11,11 +11,12 @@ services:
       - client-node-modules:/app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=http://localhost:5000
     env_file:
       - ./client/.env
     depends_on:
       - server
+    networks:
+      - pem_net
 
   server:
     build:
@@ -29,9 +30,6 @@ services:
       - server-node-modules:/app/node_modules
       - export-data:/app/exports
     environment:
-      - MONGO_URI=mongodb://mongo:27017/expense_manager?replicaSet=rs0
-      - REDIS_URL=redis://redis:6379
-      - PORT=5000
     env_file:
       - ./server/.env
     depends_on:
@@ -47,6 +45,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/expense_manager?replicaSet=rs0
+      - REDIS_URL=redis://redis:6379
+      - PORT=5000
+    networks:
+      - pem_net
 
   worker:
     build:
@@ -58,9 +62,6 @@ services:
       - server-node-modules:/app/node_modules
       - export-data:/app/exports
     environment:
-      - MONGO_URI=mongodb://mongo:27017/expense_manager?replicaSet=rs0
-      - REDIS_URL=redis://redis:6379
-      - PORT=5001
     env_file:
       - ./server/.env
     depends_on:
@@ -70,14 +71,20 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_started
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/expense_manager?replicaSet=rs0
+      - REDIS_URL=redis://redis:6379
+      - PORT=5001
+    networks:
+      - pem_net
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6380:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+    networks:
+      - pem_net
 
   mongo:
     image: mongo:6
@@ -92,6 +99,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    networks:
+      - pem_net
 
   mongo-init:
     image: mongo:6
@@ -108,3 +117,8 @@ volumes:
   export-data:
   client-node-modules:
   server-node-modules:
+
+networks:
+  pem_net:
+    name: personal_expense_management_net
+    driver: bridge
