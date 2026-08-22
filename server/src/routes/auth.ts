@@ -1,8 +1,7 @@
 import express, { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
-import Tenant, { TenantStatus } from '../models/Tenant';
-import User, { UserRole } from '../models/User';
+import User from '../models/User';
 
 const router = express.Router();
 
@@ -19,33 +18,6 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('replace_with_') 
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-const ensureTenantForUser = async (user: any) => {
-  if (user.tenantId) {
-    return user;
-  }
-
-  const tenantSlugBase = `${user.email.split('@')[0]}-${Date.now()}`
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '')
-    .slice(0, 40);
-
-  let tenant = await Tenant.findOne({ ownerId: user._id, status: TenantStatus.ACTIVE });
-
-  if (!tenant) {
-    tenant = await Tenant.create({
-      name: `${user.name}'s workspace`,
-      slug: tenantSlugBase || 'workspace',
-      ownerId: user._id,
-      status: TenantStatus.ACTIVE,
-    });
-  }
-
-  user.tenantId = tenant._id;
-  user.role = UserRole.OWNER;
-  await user.save();
-
-  return user;
-};
 
 router.post('/google', async (req: Request, res: Response) => {
   try {
@@ -70,23 +42,17 @@ router.post('/google', async (req: Request, res: Response) => {
     let user = await User.findOne({ googleId });
 
     if (!user) {
-      user = new User({ googleId, email, name, avatar, role: UserRole.OWNER });
+      user = new User({ googleId, email, name, avatar });
       await user.save();
     }
 
-    const persistedUser = await ensureTenantForUser(user);
-
-    if (!persistedUser) {
-      return res.status(500).json({ message: 'Unable to create tenant for user' });
-    }
-
     const sessionToken = jwt.sign(
-      { id: persistedUser._id, email: persistedUser.email, tenantId: persistedUser.tenantId, role: persistedUser.role },
+      { id: user._id, email: user.email, tenantId: user.tenantId },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({ token: sessionToken, user: persistedUser });
+    res.json({ token: sessionToken, user });
   } catch (error) {
     console.error('Google Auth Error:', error);
     res.status(401).json({ message: 'Authentication failed' });

@@ -1,19 +1,12 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export enum UserRole {
-  OWNER = 'OWNER',
-  ADMIN = 'ADMIN',
-  MEMBER = 'MEMBER',
-  VIEWER = 'VIEWER',
-}
-
 export interface IUser extends Document {
   googleId: string;
   email: string;
   name: string;
   avatar?: string;
   tenantId?: mongoose.Types.ObjectId;
-  role: UserRole;
+  // role removed
   createdAt: Date;
 }
 
@@ -24,12 +17,7 @@ const UserSchema = new Schema<IUser>(
     name: { type: String, required: true },
     avatar: { type: String },
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
-    role: {
-      type: String,
-      enum: Object.values(UserRole),
-      default: UserRole.OWNER,
-      index: true,
-    },
+    // role removed
   },
   { timestamps: true }
 );

@@ -1,9 +1,6 @@
 import mongoose from 'mongoose';
 
-export type TenantRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
 export type AccessAction = 'read' | 'write';
-
-export const TENANT_ROLES = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'] as const;
 
 export function buildTenantUserFilter(
   tenantId: string | mongoose.Types.ObjectId,
@@ -27,20 +24,7 @@ export function buildTenantResourceFilter(
   };
 }
 
-export function isRoleAllowed(role: string | undefined, action: AccessAction): boolean {
-  if (!role) {
-    return false;
-  }
-
-  const normalizedRole = role.toUpperCase();
-
-  if (action === 'read') {
-    return ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'].includes(normalizedRole);
-  }
-
-  if (action === 'write') {
-    return ['OWNER', 'ADMIN', 'MEMBER'].includes(normalizedRole);
-  }
-
-  return false;
+// Role-based checks removed; middleware handles authentication and tenant context.
+export function isRoleAllowed(_: string | undefined, __: AccessAction): boolean {
+  return true;
 }

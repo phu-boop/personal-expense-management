@@ -13,12 +13,9 @@ export interface AuthRequest extends Request {
     id: mongoose.Types.ObjectId;
     email: string;
     tenantId?: mongoose.Types.ObjectId;
-    role?: string;
   };
 }
 
-const READ_ROLES = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
-const WRITE_ROLES = ['OWNER', 'ADMIN', 'MEMBER'];
 
 export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   const headerToken = req.header('Authorization')?.replace(/^Bearer\s+/i, '');
@@ -44,7 +41,6 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
       id: new mongoose.Types.ObjectId(decoded.id),
       email: decoded.email,
       tenantId: new mongoose.Types.ObjectId(decoded.tenantId),
-      role: decoded.role,
     };
 
     if (!req.user.tenantId) {
@@ -58,18 +54,16 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 };
 
 export const requireReadAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
-  const userRole = req.user?.role?.toUpperCase();
-  if (!userRole || !READ_ROLES.includes(userRole)) {
-    return res.status(403).json({ message: 'Permission denied' });
+  if (!req.user || !req.user.tenantId) {
+    return res.status(401).json({ message: 'Authentication required' });
   }
 
   next();
 };
 
 export const requireWriteAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
-  const userRole = req.user?.role?.toUpperCase();
-  if (!userRole || !WRITE_ROLES.includes(userRole)) {
-    return res.status(403).json({ message: 'Write permission required' });
+  if (!req.user || !req.user.tenantId) {
+    return res.status(401).json({ message: 'Authentication required' });
   }
 
   next();
