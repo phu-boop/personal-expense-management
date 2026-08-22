@@ -160,6 +160,54 @@ Then open:
 - Backend: http://localhost:5000
 - Health: http://localhost:5000/api/ready
 
+## Google OAuth setup & running locally
+
+If you want the Google sign-in flow to work for reviewers, follow these steps or run the included script which will prompt for required values.
+
+1. Create a Google OAuth Client ID
+
+- Open the Google Cloud Console: https://console.cloud.google.com/
+- Create or select a Project.
+- Configure the OAuth consent screen (External or Internal depending on your use case).
+- Go to "Credentials" → "Create Credentials" → "OAuth client ID" → choose "Web application".
+- Add the following Authorized JavaScript origins for local development:
+    - `http://localhost:5173`
+- Copy the generated **Client ID** (format: `1234567890-abcde12345.apps.googleusercontent.com`).
+
+2. Populate `.env` (recommended: use the helper script)
+
+Recommended: run the helper script which will prompt and validate keys, then start Docker:
+
+```bash
+chmod +x scripts/setup-env.sh
+./scripts/setup-env.sh
+```
+
+Manual alternative:
+
+```bash
+cp client/.env.example client/.env
+cp server/.env.example server/.env
+# Edit client/.env and server/.env: set VITE_GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID, JWT_SECRET
+```
+
+3. Generate a secure `JWT_SECRET` (optional helper)
+
+```bash
+openssl rand -base64 32
+```
+
+4. Start Docker (if you didn't use the script)
+
+```bash
+docker compose up --build
+```
+
+Notes
+- Do NOT commit your `.env` files; keep only `*.example` in the repo.
+- `GOOGLE_CLIENT_ID` in `server/.env` must match `VITE_GOOGLE_CLIENT_ID` in `client/.env` exactly.
+- For production, replace placeholders with credentialed URIs and use a secret manager.
+
 ## Running the project
 
 ### Required environment setup before Docker
