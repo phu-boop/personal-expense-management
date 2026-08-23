@@ -15,7 +15,7 @@ import config from './config';
 
 const app = express();
 const port = Number(config.PORT);
-const allowedOrigins = (config.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map((origin) => origin.trim()).filter(Boolean);
+const allowedOrigins = (config.CORS_ORIGIN).split(',').map((origin) => origin.trim()).filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
