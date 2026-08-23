@@ -11,7 +11,8 @@ import { createStatementPdfBuffer, createStatementXlsxBuffer } from './exportDoc
 const EXPORT_DIR = path.resolve(process.cwd(), 'exports');
 
 const ensureExportDirectory = async () => {
-  await fs.mkdir(EXPORT_DIR, { recursive: true });
+  await fs.mkdir(EXPORT_DIR, { recursive: true, mode: 0o777 });
+  await fs.chmod(EXPORT_DIR, 0o777);
 };
 
 const buildExportFilePath = (jobId: string, format: 'xlsx' | 'pdf') => path.join(EXPORT_DIR, `${jobId}.${format}`);

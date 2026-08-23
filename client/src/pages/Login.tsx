@@ -16,20 +16,22 @@ const Login: React.FC = () => {
     setError(null);
     try {
       const response = await api.post('/api/auth/google', {
-        token: credentialResponse.credential
+        token: credentialResponse.credential,
       });
 
       const { token, user } = response.data;
       login(token, user);
       window.location.href = '/';
-    } catch (err) {
+    } catch (err: any) {
       console.error('Login error:', err);
-      setError('Failed to authenticate with server. Please try again.');
+      const serverMessage = err?.response?.data?.message;
+      setError(serverMessage || 'Failed to authenticate with server. Please try again.');
       setIsLoading(false);
     }
   };
 
   const handleGoogleError = () => {
+    setIsLoading(false);
     setError('Google Login failed. Please try again.');
   };
 

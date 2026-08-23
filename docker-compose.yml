@@ -34,8 +34,6 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-      mongo-init:
-        condition: service_completed_successfully
       redis:
         condition: service_started
     healthcheck:
@@ -45,7 +43,7 @@ services:
       retries: 5
       start_period: 20s
     environment:
-      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/expense_manager?replicaSet=rs0}
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/expense_manager}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - PORT=${SERVER_PORT:-5000}
     networks:
@@ -65,12 +63,10 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-      mongo-init:
-        condition: service_completed_successfully
       redis:
         condition: service_started
     environment:
-      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/expense_manager?replicaSet=rs0}
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/expense_manager}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - PORT=${WORKER_PORT:-5001}
     networks:
@@ -86,7 +82,7 @@ services:
 
   mongo:
     image: mongo:6
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    command: ["mongod", "--bind_ip_all", "--port", "27017"]
     ports:
       - "27017:27017"
     volumes:
@@ -97,17 +93,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    networks:
-      - pem_net
-
-  mongo-init:
-    image: mongo:6
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: "no"
-    entrypoint: >
-      sh -c "until mongosh --host mongo:27017 --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1; do echo 'waiting for mongo...'; sleep 2; done; mongosh --host mongo:27017 --quiet --eval \"try { if (rs.status().ok) { print('replica set already initialized'); } } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }); }\""
     networks:
       - pem_net
 

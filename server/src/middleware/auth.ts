@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import config from '../config';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = config.JWT_SECRET?.trim();
 
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET is required. Set it in the server .env file before starting the app.');
+if (!JWT_SECRET || JWT_SECRET.includes('replace_with_') || JWT_SECRET.length < 32) {
+  console.warn('JWT_SECRET is missing or insecure. Requests will fail authentication until a real 32+ character secret is configured.');
 }
 
 export interface AuthRequest extends Request {

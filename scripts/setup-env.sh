@@ -143,7 +143,7 @@ elif ! validate_value "VITE_GOOGLE_CLIENT_ID" "$CLIENT_GOOGLE_VALUE" || ! valida
 fi
 
 ensure_key_value "$SERVER_ENV_FILE" "PORT" "Enter server port" "5000"
-ensure_key_value "$SERVER_ENV_FILE" "MONGO_URI" "Enter Mongo connection string for Docker" "mongodb://mongo:27017/expense_manager?replicaSet=rs0"
+ensure_key_value "$SERVER_ENV_FILE" "MONGO_URI" "Enter Mongo connection string for Docker" "mongodb://mongo:27017/expense_manager"
 ensure_key_value "$SERVER_ENV_FILE" "REDIS_URL" "Enter Redis URL for Docker" "redis://redis:6379"
 ensure_key_value "$SERVER_ENV_FILE" "JWT_SECRET" "Enter a secure JWT secret" "$(generate_demo_secret)"
 ensure_key_value "$SERVER_ENV_FILE" "CORS_ORIGIN" "Enter frontend allowed origin list" "http://localhost:5173,http://127.0.0.1:5173"

@@ -6,7 +6,7 @@ import { AuthRequest, authenticate, requireReadAccess, requireWriteAccess } from
 import ExportJob, { ExportJobStatus } from '../models/ExportJob';
 import { normalizeExportFormat } from '../services/exportJobService';
 import { buildExportPathForJob } from '../services/exportProcessorService';
-import { buildQueueKey, createRedisQueueClient, normalizeQueuePayload } from '../services/redisQueue';
+import { buildQueueKey, createRedisQueueFromEnvironment, normalizeQueuePayload } from '../services/redisQueue';
 
 const router = express.Router();
 router.use(authenticate);
@@ -23,17 +23,17 @@ const buildExportFilePath = (jobId: string, format: 'xlsx' | 'pdf') => path.join
 const createJobFileName = (job: { _id: mongoose.Types.ObjectId; filters: { startDate: string; endDate: string }; format: 'xlsx' | 'pdf' }) =>
   `statement_${job.filters.startDate}_to_${job.filters.endDate}.${job.format}`;
 
-const exportQueue = createRedisQueueClient();
-
 const queueExportJob = async (jobId: string) => {
   const queueKey = buildQueueKey('export-jobs');
   const payload = normalizeQueuePayload({ jobId, retries: 0 });
 
   try {
+    const exportQueue = await createRedisQueueFromEnvironment();
     await exportQueue.enqueue('export-jobs', payload);
+    console.log('[export] queued job', { jobId, queueKey, payload });
     return { queueKey, payload };
   } catch (error) {
-    console.warn('Queue enqueue failed', error);
+    console.warn('[export] queue enqueue failed', error);
     return null;
   }
 };

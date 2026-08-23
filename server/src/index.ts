@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { createClient } from 'redis';
 
@@ -10,7 +10,6 @@ import transactionRoutes from './routes/transaction';
 import exportRoutes from './routes/export';
 import { buildHealthStatus, isReadyForTraffic } from './services/healthCheck';
 
-dotenv.config();
 import config from './config';
 
 const app = express();

@@ -1,0 +1,26 @@
+services:
+  mongo:
+    image: mongo:6
+    container_name: pem-local-mongo
+    restart: unless-stopped
+    command: ["mongod", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - pem-local-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - pem-db-net
+
+volumes:
+  pem-local-mongo-data:
+
+networks:
+  pem-db-net:
+    name: pem-db-net
+    driver: bridge
