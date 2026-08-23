@@ -92,6 +92,7 @@ personal-expense-management/
 ├── docs/                       # Technical documentation
 │   ├── architecture.md
 │   ├── api.md
+│   ├── export.md
 │   ├── database.md
 │   ├── dev-guide.md
 │   └── advanced-performance.md
@@ -131,6 +132,7 @@ The primary technical references are kept in the docs directory:
 
 - [docs/architecture.md](docs/architecture.md) — architecture, request flows, and system boundaries
 - [docs/api.md](docs/api.md) — API contract and endpoint documentation
+- [docs/export.md](docs/export.md) — export pipeline, queue/worker flow, and troubleshooting
 - [docs/database.md](docs/database.md) — data model and storage design
 - [docs/dev-guide.md](docs/dev-guide.md) — local workflow and troubleshooting notes
 - [docs/advanced-performance.md](docs/advanced-performance.md) — scale, export, and multi-tenant design targets
