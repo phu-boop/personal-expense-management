@@ -183,7 +183,8 @@ const Statement: React.FC = () => {
             anchor.remove();
             window.URL.revokeObjectURL(url);
           } catch (downloadErr) {
-            const status = downloadErr?.response?.status ?? 'unknown';
+            const errorWithResponse = downloadErr as { response?: { status?: number } } | undefined;
+            const status = errorWithResponse?.response?.status ?? 'unknown';
             console.error('Download error:', downloadErr);
             updateExportQueueTask(taskId, { status: 'error', step: `Download failed: ${status}`, progress: 100 });
             setIsExporting(false);
