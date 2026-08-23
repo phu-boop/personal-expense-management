@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User';
+import Tenant from '../models/Tenant';
 
 const router = express.Router();
 
@@ -44,7 +45,33 @@ router.post('/google', async (req: Request, res: Response) => {
     let user = await User.findOne({ googleId });
 
     if (!user) {
-      user = new User({ googleId, email, name, avatar });
+      const tenant = await Tenant.create({
+        name: `${name || email.split('@')[0]}'s Workspace`,
+        slug: `${(name || email.split('@')[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`,
+        ownerId: undefined as any,
+      });
+
+      user = new User({
+        googleId,
+        email,
+        name,
+        avatar,
+        tenantId: tenant._id,
+      });
+
+      tenant.ownerId = user._id;
+      await tenant.save();
+      await user.save();
+    }
+
+    if (!user.tenantId) {
+      const tenant = await Tenant.create({
+        name: `${user.name || user.email.split('@')[0]}'s Workspace`,
+        slug: `${(user.name || user.email.split('@')[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`,
+        ownerId: user._id,
+      });
+
+      user.tenantId = tenant._id;
       await user.save();
     }
 
