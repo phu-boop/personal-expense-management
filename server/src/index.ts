@@ -10,7 +10,7 @@ import transactionRoutes from './routes/transaction';
 import exportRoutes from './routes/export';
 import { buildHealthStatus, isReadyForTraffic } from './services/healthCheck';
 
-import config from './config';
+import config, { shouldStartExportWorker } from './config';
 
 const app = express();
 const port = Number(config.PORT);
@@ -93,6 +93,15 @@ const startServer = async () => {
     } catch (error) {
       console.warn('Redis unavailable; API will remain degraded until Redis is reachable', error);
       serverState.redisConnected = false;
+    }
+
+    if (shouldStartExportWorker()) {
+      try {
+        const workerModule = await import('./worker');
+        console.log('Export worker booted from API process', { module: !!workerModule });
+      } catch (error) {
+        console.error('Failed to boot export worker inside API process', error);
+      }
     }
 
     const httpServer = app.listen(port, () => {

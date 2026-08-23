@@ -16,6 +16,29 @@ export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173,htt
 
 export const EXPORT_DIR = process.env.EXPORT_DIR ?? 'exports';
 
+export const shouldStartExportWorker = () => {
+  const workerMode = process.env.WORKER_MODE?.trim().toLowerCase();
+  const explicitToggle = process.env.ENABLE_EXPORT_WORKER?.trim().toLowerCase();
+
+  if (explicitToggle === 'true' || explicitToggle === '1') {
+    return true;
+  }
+
+  if (explicitToggle === 'false' || explicitToggle === '0') {
+    return false;
+  }
+
+  if (workerMode === 'api') {
+    return false;
+  }
+
+  if (workerMode === 'worker') {
+    return true;
+  }
+
+  return Boolean(process.env.RENDER) || process.env.NODE_ENV === 'production';
+};
+
 export default {
   PORT,
   MONGO_URI,
@@ -24,4 +47,5 @@ export default {
   GOOGLE_CLIENT_ID,
   CORS_ORIGIN,
   EXPORT_DIR,
+  shouldStartExportWorker,
 };
