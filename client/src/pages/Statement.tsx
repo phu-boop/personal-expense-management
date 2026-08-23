@@ -60,22 +60,31 @@ const Statement: React.FC = () => {
   const fetchStatement = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/api/transactions/statement', {
-        params: {
-          walletId: walletId || undefined,
-          startDate,
-          endDate,
-        },
-      });
+      const [walletsRes, statementRes] = await Promise.all([
+        api.get('/api/wallets'),
+        api.get('/api/transactions/statement', {
+          params: {
+            walletId: walletId || undefined,
+            startDate,
+            endDate,
+          },
+        }),
+      ]);
 
-      setSummary(res.data.summary ?? {
+      const walletList = Array.isArray(walletsRes.data)
+        ? walletsRes.data
+        : Array.isArray(walletsRes.data?.data)
+          ? walletsRes.data.data
+          : [];
+
+      setWallets(walletList);
+      setSummary(statementRes.data.summary ?? {
         openingBalance: 0,
         totalIncome: 0,
         totalExpense: 0,
         closingBalance: 0,
       });
-      setTransactions(Array.isArray(res.data.transactions) ? res.data.transactions : []);
-      setWallets(Array.isArray(res.data.wallets) ? res.data.wallets : []);
+      setTransactions(Array.isArray(statementRes.data.transactions) ? statementRes.data.transactions : []);
     } catch (err) {
       console.error('Failed to fetch statement:', err);
     } finally {

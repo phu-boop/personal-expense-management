@@ -18,17 +18,12 @@ router.use(authenticate);
 router.use(requireReadAccess);
 
 router.post('/', requireWriteAccess, async (req: AuthRequest, res: Response) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const input = validateCreateTransaction(req.body);
-    const transaction = await createTransaction(req.user!.tenantId!, req.user!.id, input, session);
-    await session.commitTransaction();
+    const transaction = await createTransaction(req.user!.tenantId!, req.user!.id, input);
 
     res.status(201).json(transaction);
   } catch (error) {
-    await session.abortTransaction();
     if (error instanceof TransactionValidationError) {
       return res.status(400).json({ message: error.message });
     }
@@ -40,8 +35,6 @@ router.post('/', requireWriteAccess, async (req: AuthRequest, res: Response) => 
     }
     console.error(error);
     res.status(500).json({ message: 'Server error' });
-  } finally {
-    session.endSession();
   }
 });
 
@@ -147,10 +140,15 @@ router.get('/statement', async (req: AuthRequest, res: Response) => {
     });
 
     const transactions = await Transaction.find(periodQuery).sort({ date: -1, createdAt: -1 });
+    const walletOptions = await Wallet.find({ tenantId: req.user!.tenantId, userId: req.user!.id })
+      .select('_id name')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({
       summary: summaryResponse,
       transactions,
+      wallets: walletOptions,
     });
   } catch (error) {
     console.error(error);

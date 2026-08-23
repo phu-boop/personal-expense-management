@@ -1,5 +1,7 @@
 # Personal Expense Management
 
+Live demo: https://personal-expense-management-mu.vercel.app
+
 A personal finance web application designed to track wallet balances, record transactions, summarize cash flow, and generate financial reports over time.
 
 ## Overview

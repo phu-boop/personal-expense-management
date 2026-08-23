@@ -12,14 +12,13 @@ export const createTransaction = async (
   tenantId: mongoose.Types.ObjectId,
   userId: mongoose.Types.ObjectId,
   input: CreateTransactionInput,
-  session: mongoose.ClientSession,
 ) => {
-  const wallet = await Wallet.findOne({ _id: input.walletId, tenantId, userId }).session(session);
+  const wallet = await Wallet.findOne({ _id: input.walletId, tenantId, userId });
   if (!wallet) {
     throw new WalletNotFoundError('Wallet not found');
   }
 
-  const transaction = await Transaction.create([{
+  const transaction = await Transaction.create({
     tenantId,
     userId,
     walletId: input.walletId,
@@ -30,11 +29,10 @@ export const createTransaction = async (
     note: input.note,
     balanceBefore: 0,
     balanceAfter: 0,
-  }], { session });
+  });
 
   const transactions = await Transaction.find({ walletId: wallet._id, tenantId, userId })
-    .sort(transactionSort)
-    .session(session);
+    .sort(transactionSort);
 
   let balance = wallet.initialBalance;
   for (const currentTransaction of transactions) {
@@ -46,11 +44,11 @@ export const createTransaction = async (
     currentTransaction.balanceBefore = change.balanceBefore;
     currentTransaction.balanceAfter = change.balanceAfter;
     balance = change.balanceAfter;
-    await currentTransaction.save({ session });
+    await currentTransaction.save();
   }
 
   wallet.currentBalance = balance;
-  await wallet.save({ session });
+  await wallet.save();
 
-  return transactions.find((currentTransaction) => currentTransaction._id.equals(transaction[0]._id));
+  return transactions.find((currentTransaction) => currentTransaction._id.equals(transaction._id));
 };
