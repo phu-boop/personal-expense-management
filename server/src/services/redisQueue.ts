@@ -145,7 +145,9 @@ export function createRedisQueueClient(client?: RedisLikeQueueClient) {
   return { enqueue, dequeue, length, peek, enqueueDeadLetter };
 }
 
-export async function createRedisQueueFromEnvironment(redisUrl = process.env.REDIS_URL || 'redis://localhost:6379') {
+import config from '../config';
+
+export async function createRedisQueueFromEnvironment(redisUrl = config.REDIS_URL) {
   const redisClient = createClient({ url: redisUrl });
   redisClient.on('error', (error) => {
     console.error('Redis queue error:', error);

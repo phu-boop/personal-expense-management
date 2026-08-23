@@ -354,6 +354,21 @@
   width: 100%;
 }
 
+/* Remove focus outline / active border from chart SVG elements (recharts) */
+.charts-grid .recharts-wrapper :focus,
+.charts-grid .recharts-wrapper svg:focus,
+.chart-card .recharts-wrapper :focus,
+.chart-card .recharts-wrapper svg:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Ensure interactive elements still show hover but not focus ring */
+.chart-card .recharts-wrapper svg * {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .chart-empty-state {
   width: 100%;
   height: 100%;

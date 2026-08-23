@@ -11,7 +11,8 @@ import { createWorkerMetrics } from './services/workerMetrics';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const EXPORT_DIR = path.resolve(process.cwd(), 'exports');
+import config from './config';
+const EXPORT_DIR = path.resolve(process.cwd(), config.EXPORT_DIR);
 const MAX_RETRIES = 3;
 const workerMetrics = createWorkerMetrics();
 
@@ -107,7 +108,7 @@ const processNextJob = async (queue: Awaited<ReturnType<typeof createRedisQueueF
 };
 
 const startWorker = async () => {
-  const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/expense_manager';
+  const mongoUri = config.MONGO_URI;
   await mongoose.connect(mongoUri);
   console.log('Worker connected to MongoDB');
 

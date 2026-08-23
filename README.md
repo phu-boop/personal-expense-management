@@ -154,11 +154,11 @@ Important:
 - Google sign-in will still need a real OAuth client ID if you want the login flow to work fully.
 - The app will start in demo mode so the system is runnable without a deep technical setup.
 
-Then open:
+Then open (ports configurable via `server/.env` and `docker-compose` environment):
 
 - Frontend: http://localhost:5173
-- Backend: http://localhost:5000
-- Health: http://localhost:5000/api/ready
+- Backend: http://localhost:${SERVER_PORT:-5000}
+-- Health: http://localhost:${SERVER_PORT:-5000}/api/ready
 
 ## Google OAuth setup & running locally
 
@@ -176,11 +176,22 @@ If you want the Google sign-in flow to work for reviewers, follow these steps or
 
 2. Populate `.env` (recommended: use the helper script)
 
-Recommended: run the helper script which will prompt and validate keys, then start Docker:
+Recommended: run the helper script which will prompt and validate keys, then start Docker.
+
+On macOS / Linux (recommended):
 
 ```bash
 chmod +x scripts/setup-env.sh
 ./scripts/setup-env.sh
+```
+
+On Windows (PowerShell):
+
+```powershell
+# from project root
+.\scripts\setup-env.ps1
+# or to also start Docker:
+.\scripts\setup-env.ps1 -StartDocker
 ```
 
 Manual alternative:

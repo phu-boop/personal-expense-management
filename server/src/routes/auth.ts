@@ -5,14 +5,16 @@ import User from '../models/User';
 
 const router = express.Router();
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim() || 'demo-google-client-id.apps.googleusercontent.com';
-const JWT_SECRET = process.env.JWT_SECRET?.trim() || 'demo-dev-secret-change-me-please-change-this-value';
+import config from '../config';
 
-if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID.includes('your-google-client-id-here') || process.env.GOOGLE_CLIENT_ID.includes('demo-google-client-id')) {
+const GOOGLE_CLIENT_ID = config.GOOGLE_CLIENT_ID?.trim() || 'demo-google-client-id.apps.googleusercontent.com';
+const JWT_SECRET = config.JWT_SECRET?.trim() || 'demo-dev-secret-change-me-please-change-this-value';
+
+if (!config.GOOGLE_CLIENT_ID || config.GOOGLE_CLIENT_ID.includes('your-google-client-id-here') || config.GOOGLE_CLIENT_ID.includes('demo-google-client-id')) {
   console.warn('Google OAuth is running in demo mode. Replace GOOGLE_CLIENT_ID and VITE_GOOGLE_CLIENT_ID with a real client ID for sign-in to work.');
 }
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('replace_with_') || process.env.JWT_SECRET.length < 32) {
+if (!config.JWT_SECRET || config.JWT_SECRET.includes('replace_with_') || config.JWT_SECRET.length < 32) {
   console.warn('JWT_SECRET is using a fallback demo value. Replace it with a real secret for secure authentication.');
 }
 

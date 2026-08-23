@@ -51,43 +51,42 @@ const Statement: React.FC = () => {
   const isExportingRef = useRef(false);
   const [exportQueue, setExportQueue] = useState<ExportQueueItem[]>([]);
 
-  const [searchParams] = useSearchParams();
-  const initialWalletId = searchParams.get('walletId') || '';
-
-  const [walletId, setWalletId] = useState(initialWalletId);
-
-  const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
-
-  const [startDate, setStartDate] = useState(firstDay);
-  const [endDate, setEndDate] = useState(lastDay);
-
-  useEffect(() => {
-    api.get('/api/wallets')
-      .then(res => {
-        const walletList = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
-        setWallets(walletList);
-      })
-      .catch(console.error);
-  }, []);
+  const now = new Date();
+  const defaultEndDate = now.toISOString().slice(0, 10);
+  const defaultStartDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState<string>(defaultStartDate);
+  const [endDate, setEndDate] = useState<string>(defaultEndDate);
 
   const fetchStatement = async () => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams({ startDate, endDate });
-      if (walletId) params.append('walletId', walletId);
+      const res = await api.get('/api/transactions/statement', {
+        params: {
+          walletId: walletId || undefined,
+          startDate,
+          endDate,
+        },
+      });
 
-      const res = await api.get(`/api/transactions/statement?${params.toString()}`);
-      setSummary(res.data.summary);
-      setTransactions(res.data.transactions);
-    } catch (error) {
-      console.error('Failed to fetch statement:', error);
+      setSummary(res.data.summary ?? {
+        openingBalance: 0,
+        totalIncome: 0,
+        totalExpense: 0,
+        closingBalance: 0,
+      });
+      setTransactions(Array.isArray(res.data.transactions) ? res.data.transactions : []);
+      setWallets(Array.isArray(res.data.wallets) ? res.data.wallets : []);
+    } catch (err) {
+      console.error('Failed to fetch statement:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const [searchParams] = useSearchParams();
+  const initialWalletId = searchParams.get('walletId') || '';
+
+  const [walletId, setWalletId] = useState(initialWalletId);
   useEffect(() => {
     const paramWalletId = searchParams.get('walletId');
     if (paramWalletId) {
@@ -172,24 +171,23 @@ const Statement: React.FC = () => {
             progress: 100,
           });
 
-          const token = localStorage.getItem('token');
-          const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
-          const downloadUrl = new URL(`${apiBaseUrl}/api/exports/${jobId}/download`);
-
-          if (token) {
-            downloadUrl.searchParams.set('token', token);
-          }
-
-          const popup = window.open(downloadUrl.toString(), '_blank', 'noopener,noreferrer');
-          if (!popup) {
+          try {
+            const resp = await api.get(`/api/exports/${jobId}/download`, { responseType: 'blob' });
+            const blob = resp.data as Blob;
+            const url = window.URL.createObjectURL(blob);
             const anchor = document.createElement('a');
-            anchor.href = downloadUrl.toString();
+            anchor.href = url;
             anchor.download = fileName;
-            anchor.target = '_blank';
-            anchor.rel = 'noopener noreferrer';
             document.body.appendChild(anchor);
             anchor.click();
             anchor.remove();
+            window.URL.revokeObjectURL(url);
+          } catch (downloadErr) {
+            const status = downloadErr?.response?.status ?? 'unknown';
+            console.error('Download error:', downloadErr);
+            updateExportQueueTask(taskId, { status: 'error', step: `Download failed: ${status}`, progress: 100 });
+            setIsExporting(false);
+            throw downloadErr;
           }
 
           window.setTimeout(() => {

@@ -135,6 +135,7 @@ if [[ -z "$CLIENT_GOOGLE_VALUE" || -z "$SERVER_GOOGLE_VALUE" ]]; then
   sed -i.bak -E "s|^GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID_INPUT}|" "$SERVER_ENV_FILE"
   echo "Google OAuth value updated in both frontend and backend env files."
 elif ! validate_value "VITE_GOOGLE_CLIENT_ID" "$CLIENT_GOOGLE_VALUE" || ! validate_value "GOOGLE_CLIENT_ID" "$SERVER_GOOGLE_VALUE"; then
+  echo "Current client/server Google IDs look invalid. Re-prompting."
   GOOGLE_CLIENT_ID_INPUT="$(prompt_for_value "VITE_GOOGLE_CLIENT_ID" "Enter the Google OAuth client ID used by both frontend and backend" "demo-google-client-id.apps.googleusercontent.com")"
   sed -i.bak -E "s|^VITE_GOOGLE_CLIENT_ID=.*|VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID_INPUT}|" "$CLIENT_ENV_FILE"
   sed -i.bak -E "s|^GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID_INPUT}|" "$SERVER_ENV_FILE"

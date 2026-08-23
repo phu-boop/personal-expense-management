@@ -57,6 +57,7 @@ const Dashboard: React.FC = () => {
 
   const [showTotalBalance, setShowTotalBalance] = useState(false);
   const [showWalletDropdown, setShowWalletDropdown] = useState(false);
+  const [walletVisibility, setWalletVisibility] = useState<Record<string, boolean>>({});
 
   const [monthlyChart, setMonthlyChart] = useState<any[]>([]);
   const [categoryChart, setCategoryChart] = useState<any[]>([]);
@@ -89,6 +90,10 @@ const Dashboard: React.FC = () => {
         setWallets(walletsData);
         setActiveWallets(walletsData.length);
         setTotalBalance(walletsData.reduce((acc: number, w: any) => acc + w.currentBalance, 0));
+        // initialize per-wallet visibility (default: visible)
+        const visMap: Record<string, boolean> = {};
+        walletsData.forEach((w: any) => { visMap[w._id] = true; });
+        setWalletVisibility(visMap);
 
         setRecentTransactions(txRes.data.data);
 
@@ -159,9 +164,20 @@ const Dashboard: React.FC = () => {
                     {wallets.map(w => (
                       <div key={w._id} className="dropdown-wallet-item">
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span>{w.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span>{w.name}</span>
+                            <button
+                              type="button"
+                              className="eye-toggle-btn"
+                              title={walletVisibility[w._id] ? 'Hide this wallet balance' : 'Show this wallet balance'}
+                              onClick={(e) => { e.stopPropagation(); setWalletVisibility((prev) => ({ ...prev, [w._id]: !prev[w._id] })); }}
+                              style={{ background: 'transparent', border: 'none', padding: 0, marginLeft: 6 }}
+                            >
+                              {walletVisibility[w._id] ? <Eye size={14} /> : <EyeOff size={14} />}
+                            </button>
+                          </div>
                           <strong>
-                            {showTotalBalance ? `${w.currentBalance.toLocaleString('vi-VN')} VND` : '•••••••• VND'}
+                            {walletVisibility[w._id] ? `${w.currentBalance.toLocaleString('vi-VN')} VND` : '•••••••• VND'}
                           </strong>
                         </div>
                         <div className="dropdown-wallet-actions" style={{ display: 'flex', gap: '4px' }}>
