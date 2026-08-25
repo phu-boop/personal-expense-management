@@ -17,7 +17,7 @@ interface Transaction {
   type: 'INCOME' | 'EXPENSE';
   amount: number;
   category: string;
-  walletId: Wallet;
+  walletId: Wallet | string;
   date: string;
   note?: string;
   balanceAfter: number;
@@ -48,6 +48,37 @@ const Transactions: React.FC = () => {
   const [note, setNote] = useState('');
 
   const [submitError, setSubmitError] = useState('');
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const resetForm = () => {
+    setTxType('EXPENSE');
+    setAmount('');
+    setWalletId(wallets[0]?._id ?? '');
+    setCategory('Food & Drink');
+    setDate(new Date().toISOString().split('T')[0]);
+    setNote('');
+    setSubmitError('');
+  };
+
+  const openAddModal = () => {
+    setEditingTransactionId(null);
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (tx: Transaction) => {
+    const walletValue = typeof tx.walletId === 'string' ? tx.walletId : tx.walletId?._id || '';
+    setEditingTransactionId(tx._id);
+    setTxType(tx.type);
+    setAmount(String(tx.amount));
+    setWalletId(walletValue);
+    setCategory(tx.category);
+    setDate(new Date(tx.date).toISOString().split('T')[0]);
+    setNote(tx.note || '');
+    setSubmitError('');
+    setIsModalOpen(true);
+  };
 
   const fetchData = async (append = false, cursor?: string | null) => {
     if (!append) setIsLoading(true);
@@ -115,9 +146,11 @@ const Transactions: React.FC = () => {
     setAmount(formatted);
   };
 
-  const handleAddTransaction = async (e: React.FormEvent) => {
+  const handleSubmitTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
+    setIsSubmitting(true);
+
     try {
       const numericAmount = Number(amount.replace(/\D/g, ''));
       if (numericAmount <= 0) {
@@ -125,21 +158,30 @@ const Transactions: React.FC = () => {
         return;
       }
 
-      await api.post('/api/transactions', {
+      const payload = {
         walletId,
         type: txType,
         amount: numericAmount,
         category,
         date,
-        note
-      });
+        note,
+      };
+
+      if (editingTransactionId) {
+        await api.patch(`/api/transactions/${editingTransactionId}`, payload);
+      } else {
+        await api.post('/api/transactions', payload);
+      }
+
       setIsModalOpen(false);
-      setAmount('');
-      setNote('');
-      fetchData(); // Refresh list
+      resetForm();
+      setEditingTransactionId(null);
+      await fetchData();
     } catch (error: any) {
-      console.error('Failed to add transaction:', error);
-      setSubmitError(error.response?.data?.message || 'Failed to add transaction');
+      console.error('Failed to save transaction:', error);
+      setSubmitError(error.response?.data?.message || (editingTransactionId ? 'Failed to update transaction' : 'Failed to add transaction'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -153,7 +195,10 @@ const Transactions: React.FC = () => {
       );
     }
     if (filterWallet) {
-      filtered = filtered.filter(tx => tx.walletId?._id === filterWallet);
+      filtered = filtered.filter(tx => {
+        const walletValue = typeof tx.walletId === 'string' ? tx.walletId : tx.walletId?._id;
+        return walletValue === filterWallet;
+      });
     }
     if (filterCategory) {
       filtered = filtered.filter(tx => tx.category === filterCategory);
@@ -204,7 +249,7 @@ const Transactions: React.FC = () => {
           <h1>Transactions</h1>
           <p className="subtitle">Manage and track your income and expenses.</p>
         </div>
-        <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
+        <button className="btn-primary" onClick={openAddModal}>
           <Plus size={20} />
           Add Transaction
         </button>
@@ -254,7 +299,7 @@ const Transactions: React.FC = () => {
                 : 'Try changing the wallet or category filters to see more records.'}
             </span>
             {transactions.length === 0 && (
-              <button className="btn-primary" onClick={() => setIsModalOpen(true)}>Add Transaction</button>
+              <button className="btn-primary" onClick={openAddModal}>Add Transaction</button>
             )}
           </div>
         ) : (
@@ -289,12 +334,20 @@ const Transactions: React.FC = () => {
                         </div>
                         <div className="tx-details">
                           <div className="tx-category">{tx.category}</div>
-                          <div className="tx-note">{tx.note ? `${tx.note} • ` : ''}{tx.walletId?.name}</div>
+                          <div className="tx-note">{tx.note ? `${tx.note} • ` : ''}{typeof tx.walletId === 'string' ? tx.walletId : tx.walletId?.name}</div>
                         </div>
                         <div className="tx-meta">
                           <div className={`tx-amount ${tx.type.toLowerCase()}`}>
                             {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('vi-VN')} VND
                           </div>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-small"
+                            onClick={() => openEditModal(tx)}
+                            style={{ marginTop: '0.5rem' }}
+                          >
+                            Edit
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -320,16 +373,16 @@ const Transactions: React.FC = () => {
       </div>
 
       {isModalOpen && ReactDOM.createPortal(
-        <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) setIsModalOpen(false); }}>
+        <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setIsModalOpen(false); setEditingTransactionId(null); resetForm(); } }}>
           <div className="drawer-content">
             <div className="drawer-header">
-              <h2>Add Transaction</h2>
-              <button className="icon-btn" onClick={() => setIsModalOpen(false)}>
+              <h2>{editingTransactionId ? 'Edit Transaction' : 'Add Transaction'}</h2>
+              <button className="icon-btn" onClick={() => { setIsModalOpen(false); setEditingTransactionId(null); resetForm(); }}>
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleAddTransaction} className="drawer-body">
+            <form onSubmit={handleSubmitTransaction} className="drawer-body">
               {submitError && <div style={{ color: 'var(--expense)', marginBottom: '1rem', fontSize: '14px' }}>{submitError}</div>}
 
               <div className="type-toggle">
@@ -400,9 +453,9 @@ const Transactions: React.FC = () => {
               </div>
 
               <div className="drawer-footer">
-                <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className={`btn-primary ${txType.toLowerCase()}-btn`}>
-                  Add {txType === 'INCOME' ? 'Income' : 'Expense'}
+                <button type="button" className="btn-secondary" onClick={() => { setIsModalOpen(false); setEditingTransactionId(null); resetForm(); }}>Cancel</button>
+                <button type="submit" className={`btn-primary ${txType.toLowerCase()}-btn`} disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : (editingTransactionId ? 'Save Changes' : `Add ${txType === 'INCOME' ? 'Income' : 'Expense'}`)}
                 </button>
               </div>
             </form>

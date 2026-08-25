@@ -1,12 +1,8 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema, type Document } from 'mongoose';
 
-export enum TransactionType {
-  INCOME = 'INCOME',
-  EXPENSE = 'EXPENSE',
-}
+export type TransactionType = 'INCOME' | 'EXPENSE';
 
 export interface ITransaction extends Document {
-  tenantId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   walletId: mongoose.Types.ObjectId;
   type: TransactionType;
@@ -16,29 +12,28 @@ export interface ITransaction extends Document {
   note?: string;
   balanceBefore: number;
   balanceAfter: number;
+  status: 'ACTIVE' | 'DELETED';
   createdAt: Date;
+  updatedAt: Date;
 }
 
-const TransactionSchema = new Schema<ITransaction>(
+const transactionSchema = new Schema<ITransaction>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     walletId: { type: Schema.Types.ObjectId, ref: 'Wallet', required: true, index: true },
-    type: { type: String, enum: Object.values(TransactionType), required: true },
+    type: { type: String, enum: ['INCOME', 'EXPENSE'], required: true },
     amount: { type: Number, required: true },
     category: { type: String, required: true },
-    date: { type: Date, required: true, index: true },
-    note: { type: String },
-    balanceBefore: { type: Number, required: true },
-    balanceAfter: { type: Number, required: true },
+    date: { type: Date, required: true },
+    note: { type: String, default: '' },
+    balanceBefore: { type: Number, default: 0 },
+    balanceAfter: { type: Number, default: 0 },
+    status: { type: String, enum: ['ACTIVE', 'DELETED'], default: 'ACTIVE' },
   },
   { timestamps: true }
 );
 
-// Compound index for querying tenant-scoped transactions efficiently
-TransactionSchema.index({ tenantId: 1, userId: 1, date: -1, _id: -1 });
-TransactionSchema.index({ tenantId: 1, userId: 1, walletId: 1, date: -1, _id: -1 });
-TransactionSchema.index({ tenantId: 1, userId: 1, type: 1, date: -1, _id: -1 });
-TransactionSchema.index({ tenantId: 1, userId: 1, category: 1, date: -1, _id: -1 });
+transactionSchema.index({ userId: 1, walletId: 1, date: -1 });
+transactionSchema.index({ userId: 1, walletId: 1, type: 1, date: -1 });
 
-export default mongoose.model<ITransaction>('Transaction', TransactionSchema);
+export const TransactionModel = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', transactionSchema);

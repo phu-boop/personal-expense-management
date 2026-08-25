@@ -1,0 +1,277 @@
+openapi: 3.0.3
+info:
+  title: Personal Expense Management API
+  version: 1.0.0
+  description: API for authentication, wallets, transactions, statements, and reports.
+servers:
+  - url: /api
+
+paths:
+  /auth/google:
+    post:
+      x-status: done
+      summary: Sign in with Google or create user if not exists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                name:
+                  type: string
+                googleId:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    type: object
+
+  /wallets:
+    get:
+      x-status: done
+      summary: List wallets for the current user
+      responses:
+        '200':
+          description: OK
+    post:
+      x-status: done
+      summary: Create a wallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, openingBalance]
+              properties:
+                name:
+                  type: string
+                bankName:
+                  type: string
+                accountNumber:
+                  type: string
+                openingBalance:
+                  type: number
+                openingDate:
+                  type: string
+                  format: date
+      responses:
+        '201':
+          description: Wallet created
+
+  /wallets/{walletId}:
+    get:
+      x-status: done
+      summary: Get wallet detail
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+
+  /transactions:
+    get:
+      x-status: done
+      summary: List transactions with filters
+      parameters:
+        - name: walletId
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: before
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+    post:
+      x-status: done
+      summary: Create a transaction (INCOME or EXPENSE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [walletId, type, amount, category, date]
+              properties:
+                walletId:
+                  type: string
+                type:
+                  type: string
+                  enum: [INCOME, EXPENSE]
+                amount:
+                  type: number
+                category:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                note:
+                  type: string
+      responses:
+        '201':
+          description: Transaction created
+
+  /transactions/insights:
+    get:
+      x-status: partial
+      summary: Summary data for dashboard cards
+      responses:
+        '200':
+          description: OK
+
+  /transactions/{id}:
+    patch:
+      x-status: done
+      summary: Edit transaction details
+      description: Giao dịch có thể chỉnh sửa: số tiền, loại (thu/chi), và ngày.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                walletId:
+                  type: string
+                type:
+                  type: string
+                  enum: [INCOME, EXPENSE]
+                amount:
+                  type: number
+                category:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                note:
+                  type: string
+      responses:
+        '200':
+          description: Transaction updated
+    delete:
+      x-status: done
+      summary: Delete transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Transaction deleted
+
+  /transactions/statement:
+    get:
+      x-status: partial
+      summary: Get statement for wallet and date range
+      parameters:
+        - name: walletId
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+
+  /exports:
+    post:
+      x-status: planned
+      summary: Create export job (PDF or Excel)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [PDF, EXCEL]
+                walletId:
+                  type: string
+                from:
+                  type: string
+                  format: date
+                to:
+                  type: string
+                  format: date
+      responses:
+        '202':
+          description: Export job queued
+
+  /exports/{jobId}:
+    get:
+      x-status: planned
+      summary: Check export job status
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+
+  /exports/{jobId}/download:
+    get:
+      x-status: planned
+      summary: Download exported file
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File downloaded
+
+components: {}

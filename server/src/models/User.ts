@@ -1,27 +1,26 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema, type Document } from 'mongoose';
 
 export interface IUser extends Document {
-  googleId: string;
   email: string;
+  googleId?: string;
   name: string;
-  avatar?: string;
-  tenantId?: mongoose.Types.ObjectId;
-  // role removed
+  avatarUrl?: string;
+  isActive: boolean;
+  lastLoginAt?: Date;
   createdAt: Date;
+  updatedAt: Date;
 }
 
-const UserSchema = new Schema<IUser>(
+const userSchema = new Schema<IUser>(
   {
-    googleId: { type: String, required: true, unique: true },
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true, trim: true },
+    googleId: { type: String, sparse: true, unique: true },
     name: { type: String, required: true },
-    avatar: { type: String },
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
-    // role removed
+    avatarUrl: { type: String, default: '' },
+    isActive: { type: Boolean, default: true },
+    lastLoginAt: { type: Date },
   },
   { timestamps: true }
 );
 
-UserSchema.index({ tenantId: 1, email: 1 });
-
-export default mongoose.model<IUser>('User', UserSchema);
+export const UserModel = mongoose.models.User || mongoose.model<IUser>('User', userSchema);
