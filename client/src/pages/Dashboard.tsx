@@ -99,14 +99,32 @@ const Dashboard: React.FC = () => {
         setRecentTransactions(Array.isArray(txPayload) ? txPayload : []);
 
         const insightPayload = insightsRes.data?.data ?? insightsRes.data ?? {};
-        const { monthlyChart, categoryChart, insightMessage } = insightPayload;
+        const {
+          income: insightIncome = 0,
+          expense: insightExpense = 0,
+          walletTotal,
+          monthlyChart = [],
+          categoryChart = [],
+          insightMessage = '',
+        } = insightPayload as any;
+
         setMonthlyChart(Array.isArray(monthlyChart) ? monthlyChart : []);
         setCategoryChart(Array.isArray(categoryChart) ? categoryChart : []);
         setInsightMessage(typeof insightMessage === 'string' ? insightMessage : '');
 
-        const currentMonthData = (Array.isArray(monthlyChart) ? monthlyChart : []).length > 0 ? (Array.isArray(monthlyChart) ? monthlyChart[monthlyChart.length - 1] : { Income: 0, Expense: 0 }) : { Income: 0, Expense: 0 };
-        setIncome(currentMonthData.Income || 0);
-        setExpense(currentMonthData.Expense || 0);
+        const currentMonthData = (Array.isArray(monthlyChart) ? monthlyChart : []).length > 0
+          ? monthlyChart[monthlyChart.length - 1]
+          : { Income: Number(insightIncome) || 0, Expense: Number(insightExpense) || 0 };
+
+        const nextIncome = Number(currentMonthData?.Income ?? insightIncome) || 0;
+        const nextExpense = Number(currentMonthData?.Expense ?? insightExpense) || 0;
+
+        setIncome(nextIncome);
+        setExpense(nextExpense);
+
+        if (typeof walletTotal === 'number' && Number.isFinite(walletTotal)) {
+          setTotalBalance(walletTotal);
+        }
 
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);

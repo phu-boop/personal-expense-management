@@ -98,8 +98,12 @@ router.delete('/:id', async (req, res) => {
 router.get('/statement', async (req, res) => {
   try {
     const userId = (req as any).user.userId;
-    const { walletId, from, to } = req.query as Record<string, string>;
-    const data = await transactionService.getStatement(userId, { walletId, from, to });
+    const { walletId, from, to, startDate, endDate } = req.query as Record<string, string>;
+    const data = await transactionService.getStatement(userId, {
+      walletId,
+      from: from || startDate,
+      to: to || endDate,
+    });
     return res.json({
       success: true,
       data: {

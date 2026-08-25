@@ -5,6 +5,7 @@ import { TransactionAuditModel } from '../models/TransactionAudit.js';
 import { cacheDelete } from '../db/redis.js';
 import { walletRepository } from '../repositories/walletRepository.js';
 import { transactionRepository } from '../repositories/transactionRepository.js';
+import { parseDateInput } from '../utils/date.js';
 
 const recalculateWalletBalance = async (userId: string, walletId: string, session?: ClientSession) => {
   const wallet = await WalletModel.findOne({ _id: walletId, userId, isActive: { $ne: false } }).session(session ?? null).lean();
@@ -84,25 +85,79 @@ export const transactionService = {
     const expense = txList.filter((tx) => tx.type === 'EXPENSE').reduce((sum, tx) => sum + tx.amount, 0);
     const walletTotal = wallets.reduce((sum, wallet) => sum + Number(wallet.currentBalance || 0), 0);
 
+    const now = new Date();
+    const monthSeries = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      const name = date.toLocaleString('en-US', { month: 'short' });
+      return {
+        name,
+        Income: 0,
+        Expense: 0,
+      };
+    });
+
+    for (const tx of txList) {
+      const txDate = new Date(tx.date);
+      const monthIndex = monthSeries.findIndex((item) => {
+        const itemDate = new Date(now.getFullYear(), now.getMonth() - (5 - monthSeries.indexOf(item)), 1);
+        return itemDate.getFullYear() === txDate.getFullYear() && itemDate.getMonth() === txDate.getMonth();
+      });
+
+      if (monthIndex >= 0) {
+        if (tx.type === 'INCOME') {
+          monthSeries[monthIndex].Income += Number(tx.amount || 0);
+        }
+        if (tx.type === 'EXPENSE') {
+          monthSeries[monthIndex].Expense += Number(tx.amount || 0);
+        }
+      }
+    }
+
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthExpenses = txList.filter((tx) => {
+      const txDate = new Date(tx.date);
+      return tx.type === 'EXPENSE' && txDate >= currentMonthStart && txDate < new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    });
+
+    const categoryMap = new Map<string, number>();
+    for (const tx of currentMonthExpenses) {
+      const category = String(tx.category || 'Other');
+      categoryMap.set(category, (categoryMap.get(category) ?? 0) + Number(tx.amount || 0));
+    }
+
+    const categoryChart = Array.from(categoryMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const savingsRate = income > 0 ? Math.max(0, Math.round(((income - expense) / income) * 100)) : 0;
+    const insightMessage = savingsRate >= 30
+      ? 'Your savings rate is strong this month.'
+      : savingsRate >= 10
+        ? 'You are building a healthy buffer.'
+        : 'Consider reducing expenses to improve your monthly savings.';
+
     return {
       income,
       expense,
       walletTotal,
+      monthlyChart: monthSeries,
+      categoryChart,
+      insightMessage,
     };
   },
 
-  async getStatement(userId: string, filters: { walletId?: string; from?: string; to?: string }) {
+  async getStatement(userId: string, filters: { walletId?: string; from?: string; to?: string; startDate?: string; endDate?: string }) {
     const walletIds = filters.walletId ? [filters.walletId] : (await walletRepository.listByUser(userId)).map((wallet) => String(wallet._id));
 
     const query: { walletId?: string; from?: Date; to?: Date } = {};
     if (filters.walletId) {
       query.walletId = filters.walletId;
     }
-    if (filters.from) {
-      query.from = new Date(filters.from);
+    if (filters.from || filters.startDate) {
+      query.from = parseDateInput(filters.from || filters.startDate, false);
     }
-    if (filters.to) {
-      query.to = new Date(filters.to);
+    if (filters.to || filters.endDate) {
+      query.to = parseDateInput(filters.to || filters.endDate, true);
     }
 
     const transactions = await transactionRepository.listByUser(userId, query);

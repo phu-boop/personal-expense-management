@@ -13,13 +13,14 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.21.2",
+    "google-auth-library": "^8.4.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.9.3",
     "morgan": "^1.10.0",
+    "pdfkit": "^0.20.1",
     "redis": "^6.2.1",
-    "uuid": "^11.0.0",
-    "google-auth-library": "^8.4.0"
+    "uuid": "^11.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.5",
@@ -27,6 +28,7 @@
     "@types/jsonwebtoken": "^9.0.2",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.11.0",
+    "@types/pdfkit": "^0.17.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
