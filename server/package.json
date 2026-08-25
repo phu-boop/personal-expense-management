@@ -18,7 +18,8 @@
     "mongoose": "^9.9.3",
     "morgan": "^1.10.0",
     "redis": "^6.2.1",
-    "uuid": "^11.0.0"
+    "uuid": "^11.0.0",
+    "google-auth-library": "^8.4.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.5",

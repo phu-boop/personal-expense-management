@@ -68,14 +68,16 @@ const Statement: React.FC = () => {
         },
       });
 
-      setSummary(res.data.summary ?? {
+      const statementData = res.data?.data ?? res.data ?? {};
+
+      setSummary(statementData.summary ?? {
         openingBalance: 0,
         totalIncome: 0,
         totalExpense: 0,
         closingBalance: 0,
       });
-      setTransactions(Array.isArray(res.data.transactions) ? res.data.transactions : []);
-      setWallets(Array.isArray(res.data.wallets) ? res.data.wallets : []);
+      setTransactions(Array.isArray(statementData.transactions) ? statementData.transactions : []);
+      setWallets(Array.isArray(statementData.wallets) ? statementData.wallets : []);
     } catch (err) {
       console.error('Failed to fetch statement:', err);
     } finally {

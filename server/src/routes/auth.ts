@@ -7,7 +7,14 @@ const router = Router();
 router.post('/google', async (req, res) => {
   try {
     const result = await authService.loginWithGoogle(req.body || {});
-    return res.json({ success: true, ...result });
+    return res.json({
+      success: true,
+      data: {
+        token: result.token,
+        user: result.user,
+      },
+      message: 'Authentication successful',
+    });
   } catch (error: any) {
     return res.status(400).json({
       success: false,

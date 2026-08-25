@@ -86,23 +86,25 @@ const Dashboard: React.FC = () => {
           api.get('/api/transactions/insights')
         ]);
 
-        const walletsData = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.data ?? []);
+        const walletsPayload = walletsRes.data?.data ?? walletsRes.data ?? [];
+        const walletsData = Array.isArray(walletsPayload) ? walletsPayload : [];
         setWallets(walletsData);
         setActiveWallets(walletsData.length);
         setTotalBalance(walletsData.reduce((acc: number, w: any) => acc + w.currentBalance, 0));
-        // initialize per-wallet visibility (default: visible)
         const visMap: Record<string, boolean> = {};
         walletsData.forEach((w: any) => { visMap[w._id] = true; });
         setWalletVisibility(visMap);
 
-        setRecentTransactions(txRes.data.data);
+        const txPayload = txRes.data?.data ?? txRes.data ?? [];
+        setRecentTransactions(Array.isArray(txPayload) ? txPayload : []);
 
-        const { monthlyChart, categoryChart, insightMessage } = insightsRes.data;
-        setMonthlyChart(monthlyChart);
-        setCategoryChart(categoryChart);
-        setInsightMessage(insightMessage);
+        const insightPayload = insightsRes.data?.data ?? insightsRes.data ?? {};
+        const { monthlyChart, categoryChart, insightMessage } = insightPayload;
+        setMonthlyChart(Array.isArray(monthlyChart) ? monthlyChart : []);
+        setCategoryChart(Array.isArray(categoryChart) ? categoryChart : []);
+        setInsightMessage(typeof insightMessage === 'string' ? insightMessage : '');
 
-        const currentMonthData = monthlyChart.length > 0 ? monthlyChart[monthlyChart.length - 1] : { Income: 0, Expense: 0 };
+        const currentMonthData = (Array.isArray(monthlyChart) ? monthlyChart : []).length > 0 ? (Array.isArray(monthlyChart) ? monthlyChart[monthlyChart.length - 1] : { Income: 0, Expense: 0 }) : { Income: 0, Expense: 0 };
         setIncome(currentMonthData.Income || 0);
         setExpense(currentMonthData.Expense || 0);
 

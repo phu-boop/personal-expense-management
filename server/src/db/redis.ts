@@ -27,6 +27,11 @@ export const cacheSet = async (key: string, value: string, ttlSeconds = 300) => 
   await client.set(key, value, { EX: ttlSeconds });
 };
 
+export const cacheDelete = async (key: string) => {
+  const client = getRedisClient();
+  await client.del(key);
+};
+
 export const cacheGet = async (key: string) => {
   const client = getRedisClient();
   return client.get(key);

@@ -27,7 +27,7 @@ const Wallets: React.FC = () => {
 
   const [name, setName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [initialBalance, setInitialBalance] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('');
 
   const fetchWallets = async (nextPage = page) => {
     setIsLoading(true);
@@ -60,14 +60,14 @@ const Wallets: React.FC = () => {
     }));
   };
 
-  const handleInitialBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOpeningBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawDigits = e.target.value.replace(/\D/g, '');
     if (!rawDigits) {
-      setInitialBalance('');
+      setOpeningBalance('');
       return;
     }
     const formatted = Number(rawDigits).toLocaleString('vi-VN');
-    setInitialBalance(formatted);
+    setOpeningBalance(formatted);
   };
 
   const handleCreateWallet = async (e: React.FormEvent) => {
@@ -76,13 +76,13 @@ const Wallets: React.FC = () => {
       await api.post('/api/wallets', {
         name,
         accountNumber,
-        initialBalance: Number(initialBalance.replace(/\D/g, '')) || 0,
-        startDate: new Date().toISOString()
+        openingBalance: Number(openingBalance.replace(/\D/g, '')) || 0,
+        openingDate: new Date().toISOString()
       });
       setIsModalOpen(false);
       setName('');
       setAccountNumber('');
-      setInitialBalance('');
+      setOpeningBalance('');
       fetchWallets();
     } catch (error) {
       console.error('Failed to create wallet:', error);
@@ -244,8 +244,8 @@ const Wallets: React.FC = () => {
                   placeholder="0"
                   className="form-input"
                   required
-                  value={initialBalance}
-                  onChange={handleInitialBalanceChange}
+                  value={openingBalance}
+                  onChange={handleOpeningBalanceChange}
                 />
               </div>
 
