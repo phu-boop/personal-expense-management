@@ -70,10 +70,11 @@ const Transactions: React.FC = () => {
     return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
   };
 
-  const resetForm = () => {
+  const resetForm = (preferredWalletId?: string) => {
+    const fallbackWalletId = preferredWalletId ?? (paramWalletId || wallets[0]?._id || '');
     setTxType('EXPENSE');
     setAmount('');
-    setWalletId(wallets[0]?._id ?? '');
+    setWalletId(fallbackWalletId);
     setCategory('Food & Drink');
     setDate(new Date().toISOString().split('T')[0]);
     setNote('');
@@ -82,7 +83,7 @@ const Transactions: React.FC = () => {
 
   const openAddModal = () => {
     setEditingTransactionId(null);
-    resetForm();
+    resetForm(paramWalletId || wallets[0]?._id || '');
     setIsModalOpen(true);
   };
 
@@ -150,10 +151,13 @@ const Transactions: React.FC = () => {
       setFilterWallet(paramWalletId);
       setWalletId(paramWalletId);
     }
+
     if (paramAction === 'new') {
+      setEditingTransactionId(null);
+      resetForm(paramWalletId || wallets[0]?._id || '');
       setIsModalOpen(true);
     }
-  }, [searchParams, paramWalletId, paramAction]);
+  }, [searchParams, paramWalletId, paramAction, wallets]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawDigits = e.target.value.replace(/\D/g, '');
@@ -481,42 +485,66 @@ const Transactions: React.FC = () => {
 
       {isUserHistoryOpen && ReactDOM.createPortal(
         <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setIsUserHistoryOpen(false); setUserHistoryLogs([]); } }}>
-          <div className="drawer-content" style={{ maxWidth: '620px' }}>
-            <div className="drawer-header">
-              <h2>User Audit History</h2>
+          <div className="drawer-content audit-history-drawer">
+            <div className="drawer-header audit-history-header">
+              <div>
+                <p className="audit-history-kicker">Activity</p>
+                <h2>User Audit History</h2>
+              </div>
               <button className="icon-btn" onClick={() => { setIsUserHistoryOpen(false); setUserHistoryLogs([]); }}>
                 <X size={24} />
               </button>
             </div>
 
-            <div className="drawer-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="drawer-body audit-history-body">
               {userHistoryLogs.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '1rem 0' }}>No audit history found.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {userHistoryLogs.map((log) => {
-                    const diffs = summarizeAuditDiff(log);
-                    return (
-                      <div key={log._id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.75rem 0.9rem', background: 'rgba(15, 23, 42, 0.35)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.35rem' }}>
-                          <strong>{log.changeReason}</strong>
-                          <span style={{ fontSize: '12px', color: '#c7d2fe' }}>{new Date(log.changedAt).toLocaleString('vi-VN')}</span>
-                        </div>
-
-                        <div style={{ fontSize: '12px', color: '#dbeafe', lineHeight: 1.8 }}>
-                          <div><strong>Transaction:</strong> {log.transactionId}</div>
-                          {diffs.length > 0 ? (
-                            diffs.map((item, index) => (
-                              <div key={`${log._id}-${index}`}>• {item}</div>
-                            ))
-                          ) : (
-                            <div>• Không có thay đổi chi tiết.</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="audit-history-empty">
+                  <div className="audit-history-empty-icon">!</div>
+                  <strong>No audit history found.</strong>
+                  <span>There are no activity logs for this account yet.</span>
                 </div>
+              ) : (
+                <>
+                  <div className="audit-history-summary">
+                    <div className="audit-history-stat">
+                      <span>Total records</span>
+                      <strong>{userHistoryLogs.length}</strong>
+                    </div>
+                  </div>
+
+                  <div className="audit-history-list">
+                    {userHistoryLogs.map((log) => {
+                      const diffs = summarizeAuditDiff(log);
+                      return (
+                        <div key={log._id} className="audit-history-item">
+                          <div className="audit-history-item-top">
+                            <div className="audit-history-reason-wrap">
+                              <span className="audit-history-badge">Update</span>
+                              <strong>{log.changeReason}</strong>
+                            </div>
+                            <span className="audit-history-time">{new Date(log.changedAt).toLocaleString('vi-VN')}</span>
+                          </div>
+
+                          <div className="audit-history-details">
+                            <div className="audit-history-transaction">
+                              <span>Transaction</span>
+                              <strong>{log.transactionId}</strong>
+                            </div>
+                            {diffs.length > 0 ? (
+                              <div className="audit-history-diff">
+                                {diffs.map((item, index) => (
+                                  <div key={`${log._id}-${index}`} className="audit-history-diff-item">• {item}</div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="audit-history-diff-item muted">• Không có thay đổi chi tiết.</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -536,28 +564,28 @@ const Transactions: React.FC = () => {
 
             <div className="drawer-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {historyTransaction && (
-                <div style={{ background: 'var(--surface-soft)', borderRadius: '12px', padding: '0.75rem 1rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ background: 'var(--surface-soft)', borderRadius: '12px', padding: '0.75rem 1rem', border: '1px solid var(--border)' }}>
                   <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>{historyTransaction.category}</div>
-                  <div style={{ color: '#c7d2fe', fontSize: '13px' }}>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {historyTransaction.type === 'INCOME' ? '+' : '-'}{historyTransaction.amount.toLocaleString('vi-VN')} VND • {new Date(historyTransaction.date).toLocaleDateString('vi-VN')}
                   </div>
                 </div>
               )}
 
               {historyLogs.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '1rem 0' }}>No edit history yet.</div>
+                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '1rem 0' }}>No edit history yet.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {historyLogs.map((log) => {
                     const diffs = summarizeAuditDiff(log);
                     return (
-                      <div key={log._id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.75rem 0.9rem', background: 'rgba(15, 23, 42, 0.35)' }}>
+                      <div key={log._id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem 0.9rem', background: 'var(--surface-soft)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.35rem' }}>
                           <strong>{log.changeReason}</strong>
-                          <span style={{ fontSize: '12px', color: '#c7d2fe' }}>{new Date(log.changedAt).toLocaleString('vi-VN')}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{new Date(log.changedAt).toLocaleString('vi-VN')}</span>
                         </div>
 
-                        <div style={{ fontSize: '12px', color: '#dbeafe', lineHeight: 1.8 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
                           {diffs.length > 0 ? (
                             diffs.map((item, index) => (
                               <div key={`${log._id}-${index}`}>• {item}</div>
