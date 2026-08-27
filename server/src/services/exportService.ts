@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
 import { ExportJobModel } from '../models/ExportJob.js';
@@ -7,8 +8,8 @@ import { transactionRepository } from '../repositories/transactionRepository.js'
 import { formatDateLabel, parseDateInput } from '../utils/date.js';
 
 const EXPORT_BASE_DIR = path.resolve(process.cwd(), 'storage', 'exports');
-const PDF_FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-const PDF_FONT_BOLD_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+const PDF_FONT_PATH = '/usr/share/fonts/dejavu/DejaVuSans.ttf';
+const PDF_FONT_BOLD_PATH = '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf';
 
 const formatCurrency = (value: number, withSign = false) => {
   const safeValue = Number.isFinite(value) ? value : 0;
@@ -23,16 +24,21 @@ const buildPdfDocument = (title: string, dateRange: string, summary: any, transa
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ margin: 20, size: 'A4' });
     const chunks: Buffer[] = [];
+    const hasCustomFonts = existsSync(PDF_FONT_PATH) && existsSync(PDF_FONT_BOLD_PATH);
+    const regularFont = hasCustomFonts ? 'DejaVuSans' : 'Helvetica';
+    const boldFont = hasCustomFonts ? 'DejaVuSans-Bold' : 'Helvetica-Bold';
 
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.registerFont('DejaVuSans', PDF_FONT_PATH);
-    doc.registerFont('DejaVuSans-Bold', PDF_FONT_BOLD_PATH);
+    if (hasCustomFonts) {
+      doc.registerFont('DejaVuSans', PDF_FONT_PATH);
+      doc.registerFont('DejaVuSans-Bold', PDF_FONT_BOLD_PATH);
+    }
 
-    doc.font('DejaVuSans-Bold').fontSize(18).text(title, 50, 30, { align: 'center', width: 500 });
-    doc.font('DejaVuSans').fontSize(11).fillColor('#333').text(`Ngày: ${dateRange}`, 50, 70, { align: 'left' });
+    doc.font(boldFont).fontSize(18).text(title, 50, 30, { align: 'center', width: 500 });
+    doc.font(regularFont).fontSize(11).fillColor('#333').text(`Ngày: ${dateRange}`, 50, 70, { align: 'left' });
 
     let y = 110;
     const summaryRows = [
@@ -43,14 +49,14 @@ const buildPdfDocument = (title: string, dateRange: string, summary: any, transa
     ];
 
     summaryRows.forEach(([label, value]) => {
-      doc.font('DejaVuSans-Bold').fontSize(11).text(label, 50, y, { width: 180, align: 'left' });
-      doc.font('DejaVuSans').fontSize(11).text(value, 250, y, { width: 280, align: 'left' });
+      doc.font(boldFont).fontSize(11).text(label, 50, y, { width: 180, align: 'left' });
+      doc.font(regularFont).fontSize(11).text(value, 250, y, { width: 280, align: 'left' });
       y += 22;
     });
 
     if (transactions.length > 0) {
       y += 12;
-      doc.font('DejaVuSans-Bold').fontSize(12).text('Transactions', 50, y, { align: 'left' });
+      doc.font(boldFont).fontSize(12).text('Transactions', 50, y, { align: 'left' });
       y += 18;
 
       transactions.forEach((tx) => {
@@ -58,7 +64,7 @@ const buildPdfDocument = (title: string, dateRange: string, summary: any, transa
         const type = tx.type === 'INCOME' ? 'Thu' : 'Chi';
         const amount = tx.type === 'INCOME' ? `+${formatCurrency(tx.amount)}` : `-${formatCurrency(tx.amount)}`;
         const line = `${date} | ${type} | ${tx.category} | ${amount} | ${tx.note || 'Không có ghi chú'}`;
-        doc.font('DejaVuSans').fontSize(9).text(line, 50, y, { width: 500, align: 'left' });
+        doc.font(regularFont).fontSize(9).text(line, 50, y, { width: 500, align: 'left' });
         y += 16;
 
         if (y > 760) {
