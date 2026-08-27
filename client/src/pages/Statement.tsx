@@ -60,31 +60,24 @@ const Statement: React.FC = () => {
   const fetchStatement = async () => {
     setIsLoading(true);
     try {
-      const [walletsRes, statementRes] = await Promise.all([
-        api.get('/api/wallets'),
-        api.get('/api/transactions/statement', {
-          params: {
-            walletId: walletId || undefined,
-            startDate,
-            endDate,
-          },
-        }),
-      ]);
+      const res = await api.get('/api/transactions/statement', {
+        params: {
+          walletId: walletId || undefined,
+          from: startDate,
+          to: endDate,
+        },
+      });
 
-      const walletList = Array.isArray(walletsRes.data)
-        ? walletsRes.data
-        : Array.isArray(walletsRes.data?.data)
-          ? walletsRes.data.data
-          : [];
+      const statementData = res.data?.data ?? res.data ?? {};
 
-      setWallets(walletList);
-      setSummary(statementRes.data.summary ?? {
+      setSummary(statementData.summary ?? {
         openingBalance: 0,
         totalIncome: 0,
         totalExpense: 0,
         closingBalance: 0,
       });
-      setTransactions(Array.isArray(statementRes.data.transactions) ? statementRes.data.transactions : []);
+      setTransactions(Array.isArray(statementData.transactions) ? statementData.transactions : []);
+      setWallets(Array.isArray(statementData.wallets) ? statementData.wallets : []);
     } catch (err) {
       console.error('Failed to fetch statement:', err);
     } finally {
@@ -144,13 +137,17 @@ const Statement: React.FC = () => {
 
       const payload = {
         walletId: walletId || undefined,
-        startDate,
-        endDate,
-        format,
+        fromDate: startDate,
+        toDate: endDate,
+        format: format === 'xlsx' ? 'EXCEL' : 'PDF',
       };
 
       const createRes = await api.post('/api/exports', payload);
-      const jobId = createRes.data.jobId;
+      const jobId = createRes.data?.data?.jobId || createRes.data?.jobId;
+      if (!jobId) {
+        throw new Error(createRes.data?.message || 'Không tạo được export job');
+      }
+
       updateExportQueueTask(taskId, { step: 'Generating report...', progress: 35 });
 
       let pollAttempts = 0;
@@ -171,9 +168,10 @@ const Statement: React.FC = () => {
         const jobRes = await api.get(`/api/exports/${jobId}`, {
           headers: { 'Cache-Control': 'no-cache' },
         });
-        const status = jobRes.data.status;
+        const status = jobRes.data?.data?.status || jobRes.data?.status;
+        const message = jobRes.data?.message || jobRes.data?.data?.message || 'Export failed.';
 
-        if (status === 'COMPLETED') {
+        if (status === 'DONE') {
           updateExportQueueTask(taskId, {
             step: 'Ready to download',
             status: 'done',
@@ -193,9 +191,9 @@ const Statement: React.FC = () => {
             window.URL.revokeObjectURL(url);
           } catch (downloadErr) {
             const errorWithResponse = downloadErr as { response?: { status?: number } } | undefined;
-            const status = errorWithResponse?.response?.status ?? 'unknown';
+            const statusCode = errorWithResponse?.response?.status ?? 'unknown';
             console.error('Download error:', downloadErr);
-            updateExportQueueTask(taskId, { status: 'error', step: `Download failed: ${status}`, progress: 100 });
+            updateExportQueueTask(taskId, { status: 'error', step: `Download failed: ${statusCode}`, progress: 100 });
             setIsExporting(false);
             throw downloadErr;
           }
@@ -208,13 +206,13 @@ const Statement: React.FC = () => {
           return;
         }
 
-        if (status === 'FAILED' || status === 'EXPIRED') {
+        if (status === 'FAILED') {
           updateExportQueueTask(taskId, {
             status: 'error',
-            step: jobRes.data.message || 'Xuất file thất bại',
+            step: message || 'Xuất file thất bại',
             progress: 100,
           });
-          throw new Error(jobRes.data.message || 'Export failed.');
+          throw new Error(message || 'Export failed.');
         }
 
         updateExportQueueTask(taskId, {

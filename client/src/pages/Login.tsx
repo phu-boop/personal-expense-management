@@ -19,7 +19,7 @@ const Login: React.FC = () => {
         token: credentialResponse.credential,
       });
 
-      const { token, user } = response.data;
+      const { token, user } = response.data.data;
       login(token, user);
       window.location.href = '/';
     } catch (err: any) {

@@ -1,56 +1,30 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema, type Document } from 'mongoose';
 
-export enum ExportJobStatus {
-  PENDING = 'PENDING',
-  PROCESSING = 'PROCESSING',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED',
-  EXPIRED = 'EXPIRED',
-}
-
-export type ExportFormat = 'xlsx' | 'pdf';
+export type ExportStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
 
 export interface IExportJob extends Document {
-  tenantId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
-  format: ExportFormat;
-  filters: {
-    walletId?: mongoose.Types.ObjectId;
-    startDate: string;
-    endDate: string;
-  };
-  status: ExportJobStatus;
-  fileKey?: string;
-  error?: string;
+  walletId?: mongoose.Types.ObjectId;
+  fromDate?: Date;
+  toDate?: Date;
+  type: 'PDF' | 'EXCEL';
+  status: ExportStatus;
+  fileUrl?: string;
   createdAt: Date;
-  completedAt?: Date;
-  expiresAt: Date;
+  updatedAt: Date;
 }
 
-const ExportJobSchema = new Schema<IExportJob>(
+const exportJobSchema = new Schema<IExportJob>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    format: { type: String, enum: ['xlsx', 'pdf'], required: true },
-    filters: {
-      walletId: { type: Schema.Types.ObjectId, ref: 'Wallet' },
-      startDate: { type: String, required: true },
-      endDate: { type: String, required: true },
-    },
-    status: {
-      type: String,
-      enum: Object.values(ExportJobStatus),
-      default: ExportJobStatus.PENDING,
-      index: true,
-    },
-    fileKey: { type: String },
-    error: { type: String },
-    expiresAt: { type: Date, required: true, index: true },
-    completedAt: { type: Date },
+    walletId: { type: Schema.Types.ObjectId, ref: 'Wallet', index: true },
+    fromDate: { type: Date },
+    toDate: { type: Date },
+    type: { type: String, enum: ['PDF', 'EXCEL'], default: 'PDF' },
+    status: { type: String, enum: ['PENDING', 'RUNNING', 'DONE', 'FAILED'], default: 'PENDING' },
+    fileUrl: { type: String, default: '' },
   },
   { timestamps: true }
 );
 
-ExportJobSchema.index({ tenantId: 1, userId: 1, createdAt: -1 });
-
-export default mongoose.model<IExportJob>('ExportJob', ExportJobSchema);
+export const ExportJobModel = mongoose.models.ExportJob || mongoose.model<IExportJob>('ExportJob', exportJobSchema);

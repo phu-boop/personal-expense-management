@@ -86,25 +86,45 @@ const Dashboard: React.FC = () => {
           api.get('/api/transactions/insights')
         ]);
 
-        const walletsData = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.data ?? []);
+        const walletsPayload = walletsRes.data?.data ?? walletsRes.data ?? [];
+        const walletsData = Array.isArray(walletsPayload) ? walletsPayload : [];
         setWallets(walletsData);
         setActiveWallets(walletsData.length);
         setTotalBalance(walletsData.reduce((acc: number, w: any) => acc + w.currentBalance, 0));
-        // initialize per-wallet visibility (default: visible)
         const visMap: Record<string, boolean> = {};
         walletsData.forEach((w: any) => { visMap[w._id] = true; });
         setWalletVisibility(visMap);
 
-        setRecentTransactions(txRes.data.data);
+        const txPayload = txRes.data?.data ?? txRes.data ?? [];
+        setRecentTransactions(Array.isArray(txPayload) ? txPayload : []);
 
-        const { monthlyChart, categoryChart, insightMessage } = insightsRes.data;
-        setMonthlyChart(monthlyChart);
-        setCategoryChart(categoryChart);
-        setInsightMessage(insightMessage);
+        const insightPayload = insightsRes.data?.data ?? insightsRes.data ?? {};
+        const {
+          income: insightIncome = 0,
+          expense: insightExpense = 0,
+          walletTotal,
+          monthlyChart = [],
+          categoryChart = [],
+          insightMessage = '',
+        } = insightPayload as any;
 
-        const currentMonthData = monthlyChart.length > 0 ? monthlyChart[monthlyChart.length - 1] : { Income: 0, Expense: 0 };
-        setIncome(currentMonthData.Income || 0);
-        setExpense(currentMonthData.Expense || 0);
+        setMonthlyChart(Array.isArray(monthlyChart) ? monthlyChart : []);
+        setCategoryChart(Array.isArray(categoryChart) ? categoryChart : []);
+        setInsightMessage(typeof insightMessage === 'string' ? insightMessage : '');
+
+        const currentMonthData = (Array.isArray(monthlyChart) ? monthlyChart : []).length > 0
+          ? monthlyChart[monthlyChart.length - 1]
+          : { Income: Number(insightIncome) || 0, Expense: Number(insightExpense) || 0 };
+
+        const nextIncome = Number(currentMonthData?.Income ?? insightIncome) || 0;
+        const nextExpense = Number(currentMonthData?.Expense ?? insightExpense) || 0;
+
+        setIncome(nextIncome);
+        setExpense(nextExpense);
+
+        if (typeof walletTotal === 'number' && Number.isFinite(walletTotal)) {
+          setTotalBalance(walletTotal);
+        }
 
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);

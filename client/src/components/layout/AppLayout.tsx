@@ -13,14 +13,15 @@ const AppLayout: React.FC = () => {
 
   const [name, setName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [initialBalance, setInitialBalance] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const checkWallets = async () => {
     try {
       const res = await api.get('/api/wallets');
-      const walletList = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      const payload = res.data?.data ?? res.data ?? [];
+      const walletList = Array.isArray(payload) ? payload : [];
 
       if (walletList.length === 0) {
         setShowOnboarding(true);
@@ -38,14 +39,14 @@ const AppLayout: React.FC = () => {
     checkWallets();
   }, []);
 
-  const handleInitialBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleOpeningBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawDigits = e.target.value.replace(/\D/g, '');
     if (!rawDigits) {
-      setInitialBalance('');
+      setOpeningBalance('');
       return;
     }
 
-    setInitialBalance(Number(rawDigits).toLocaleString('vi-VN'));
+    setOpeningBalance(Number(rawDigits).toLocaleString('vi-VN'));
   };
 
   const handleCreateFirstWallet = async (e: React.FormEvent) => {
@@ -57,8 +58,8 @@ const AppLayout: React.FC = () => {
       await api.post('/api/wallets', {
         name,
         accountNumber,
-        initialBalance: Number(initialBalance.replace(/\D/g, '')) || 0,
-        startDate: new Date().toISOString()
+        openingBalance: Number(openingBalance.replace(/\D/g, '')) || 0,
+        openingDate: new Date().toISOString()
       });
       setShowOnboarding(false);
       window.location.reload();
@@ -133,8 +134,8 @@ const AppLayout: React.FC = () => {
                   className="form-input"
                   required
                   placeholder="0"
-                  value={initialBalance}
-                  onChange={handleInitialBalanceChange}
+                  value={openingBalance}
+                  onChange={handleOpeningBalanceChange}
                 />
               </div>
 

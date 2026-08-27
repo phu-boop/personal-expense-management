@@ -1,329 +1,127 @@
 # Personal Expense Management
 
-Live demo: https://personal-expense-management-mu.vercel.app
+## 1. Tổng quan dự án
 
-A personal finance web application designed to track wallet balances, record transactions, summarize cash flow, and generate financial reports over time.
+Dự án này là một ứng dụng web quản lý chi tiêu cá nhân, giúp người dùng:
+- quản lý nhiều ví/tài khoản ngân hàng
+- ghi nhận khoản thu và chi
+- theo dõi số dư theo thời gian
+- xem lịch sử giao dịch
+- xem báo cáo theo khoảng thời gian
+- xuất báo cáo dạng PDF/Excel
 
-## Overview
+Mục tiêu chính là xây dựng một hệ thống đơn giản, dễ dùng, có thể triển khai bằng Docker chỉ với một lệnh và chạy ổn định trên môi trường phát triển.
 
-This project addresses the common problem of managing personal finances manually through spreadsheets or disconnected tools. It provides a centralized system to:
+---
 
-- sign in with Google
-- create and manage multiple wallets
-- track income and expense transactions
-- automatically update balances
-- review statement summaries by time period
-- export reports in PDF and Excel format
-- enforce user and tenant-scoped access control
+## 2. Stack công nghệ
 
-The application follows a clear client-server architecture with React on the frontend, Express on the backend, MongoDB as the persistence layer, and Redis for background export processing.
+- Frontend: React + TypeScript + Vite
+- Backend: Node.js + Express + TypeScript
+- Database: MongoDB
+- Cache: Redis
+- Background worker: Node worker process
+- Containerization: Docker + Docker Compose
 
-## Business problem it solves
+---
 
-Without a proper tracking system, users often struggle with:
+## 3. Kiến trúc hiện tại
 
-- poor visibility into total balances and wallet-level funds
-- inconsistent transaction records
-- difficult monthly or period-based reviews
-- manual calculation errors and weak financial control
+Cấu trúc dự án đang theo hướng:
+- Client: giao diện người dùng
+- Server: API và logic nghiệp vụ
+- Worker: xử lý job background như xuất báo cáo
+- MongoDB: lưu users, wallets, transactions, export jobs
+- Redis: cache và hỗ trợ job/background
 
-This project provides a structured way to manage daily personal cash flow using real transaction logic instead of a simple UI mockup.
+Tham khảo thêm:
+- [plans/REQUIREMENTS.md](plans/REQUIREMENTS.md)
+- [plans/system-architecture.md](plans/system-architecture.md)
+- [plans/db-design.md](plans/db-design.md)
 
-## Core features
+---
 
-### 1. Authentication
+## 4. Mô tả yêu cầu theo kế hoạch
 
-- Google sign-in
-- automatic user creation on first login
-- JWT-based protected routes
-- tenant-aware data isolation
+### 4.1 Các chức năng mong đợi theo yêu cầu
+- Đăng nhập bằng Google
+- Tự động tạo tài khoản nếu là user mới
+- Tạo và quản lý nhiều ví
+- Ghi các giao dịch thu/chi
+- Tự động cập nhật số dư ví
+- Kiểm tra số dư trước khi chi
+- Xem báo cáo theo khoảng thời gian
+- Xuất báo cáo PDF/Excel
+- Dễ sử dụng trên cả desktop và mobile
 
-### 2. Wallet management
+### 4.2 Yêu cầu kỹ thuật và thiết kế
+- Mô hình backend/client tách rõ
+- MongoDB dùng cho dữ liệu nghiệp vụ
+- Redis dùng cho cache và queue
+- Docker Compose để khởi động đồng bộ toàn bộ stack
+- Có khả năng mở rộng theo hướng multi-tenant và dữ liệu lớn
 
-- create multiple wallets for different financial sources
-- store account metadata and opening balance values
-- calculate total balance across all wallets
+---
 
-### 3. Transactions
+## 5. Tình trạng hiện tại (đã đạt / chưa đạt)
 
-- record income and expense entries
-- select wallet, category, date, amount, and notes
-- update balances automatically after each transaction
-- prevent invalid spending when funds are insufficient
+### 5.1 Đã đạt
 
-### 4. Statement reporting
+Theo code hiện tại và kiểm tra chạy thực tế bằng Docker, các mục sau đã đạt được:
 
-- filter by wallet and date range
-- compute opening balance, total income, total expense, and closing balance
-- display the detailed transaction list for the selected period
+- Dự án có cấu trúc client/server/worker/database/cache rõ ràng.
+- Có thể chạy bằng Docker Compose với một lệnh bootstrap.
+- MongoDB replica set được tự khởi tạo lần đầu và ổn định ở trạng thái PRIMARY.
+- Server backend có thể khởi động và phản hồi `/api/ready` thành công.
+- Redis và Mongo đã chạy cùng stack trong Docker.
+- Hệ thống đã xử lý được vấn đề font PDF trong container và PDF generation đã được kiểm chứng trên runtime Docker.
 
-### 5. Export pipeline
+Kết quả kiểm chứng gần nhất:
+- `rs.status()` trả về `stateStr: 'PRIMARY'`
+- `GET /api/ready` trả về `200`
+- PDF generation trong container đã thành công (`PDF_OK true`)
 
-- generate report exports
-- produce PDF and Excel files
-- handle report generation asynchronously via worker processing
-- allow file download once export is completed
+### 5.2 Chưa đạt / còn đang triển khai
 
-## System architecture
+Các mục dưới đây theo kế hoạch vẫn chưa được xem là hoàn thành đầy đủ:
 
-```mermaid
-flowchart TD
-    User[User] --> Client[React + TypeScript Client]
-    Client --> API[Express API]
-    API --> Auth[Google OAuth + JWT]
-    API --> Services[Wallet / Transaction / Statement / Export Services]
-    Services --> Mongo[(MongoDB)]
-    Services --> Redis[(Redis)]
-    Worker[Export Worker] --> Redis
-    Worker --> Files[Generated PDF / XLSX files]
-    Worker --> Mongo
-```
+- Chưa có xác nhận end-to-end đầy đủ cho toàn bộ flow đăng nhập Google với auth thật trên môi trường production-like.
+- Chưa có xác nhận đầy đủ cho toàn bộ flow tạo ví, thêm/sửa/xóa giao dịch và kiểm tra số dư trên UI thật.
+- Chưa có hệ thống report statement hoàn chỉnh theo đúng mọi tiêu chí báo cáo nâng cao từ kế hoạch.
+- Chưa có queue worker thực sự mạnh mẽ cho export hàng triệu dòng theo kiến trúc đề xuất.
+- Chưa có triển khai multi-tenant đầy đủ và scale lớn như mục nâng cao.
+- Chưa có storage lưu file export kiểu S3/MinIO hoàn chỉnh trong môi trường production.
 
-## Project structure
+Nói ngắn gọn: dự án đã đạt mức nền tảng chạy ổn định được bằng Docker, nhưng vẫn còn phần lớn chức năng nghiệp vụ theo yêu cầu và mô hình nâng cao đang ở giai đoạn triển khai hoặc cần kiểm tra thực tế thêm.
 
-```text
-personal-expense-management/
-├── client/                     # Frontend React + Vite
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.ts
-├── server/                     # Backend Express + TypeScript
-│   ├── src/
-│   ├── package.json
-│   └── tsconfig.json
-├── docs/                       # Technical documentation
-│   ├── architecture.md
-│   ├── api.md
-│   ├── export.md
-│   ├── database.md
-│   ├── dev-guide.md
-│   └── advanced-performance.md
-├── docker-compose.yml          # Local orchestration
-├── README.md                   # Project overview
-├── .env.example                # Example environment settings
-└── package.json                # Optional root metadata
-```
+---
 
-## Tech stack
+## 6. Trạng thái khuyến nghị
 
-### Frontend
+Dự án hiện tại nên được xem là:
+- `Foundation complete`: stack chạy ổn định, Mongo/Redis/Server/Worker được kết nối và chạy trong Docker
+- `Feature completion in progress`: các chức năng nghiệp vụ theo yêu cầu cần kiểm thử từng màn hình và từng API
+- `Production-scale architecture pending`: multi-tenant, huge dataset, queue export và object storage chưa cần thiết phải hoàn thiện cho giai đoạn hiện tại
 
-- React
-- TypeScript
-- Vite
-- responsive UI styling
+---
 
-### Backend
-
-- Node.js
-- Express.js
-- TypeScript
-- JWT authentication
-- Google OAuth verification
-
-### Data and infrastructure
-
-- MongoDB
-- Redis
-- Docker + Docker Compose
-- health checks and readiness endpoints
-
-## Documentation
-
-The primary technical references are kept in the docs directory:
-
-- [docs/architecture.md](docs/architecture.md) — architecture, request flows, and system boundaries
-- [docs/api.md](docs/api.md) — API contract and endpoint documentation
-- [docs/export.md](docs/export.md) — export pipeline, queue/worker flow, and troubleshooting
-- [docs/database.md](docs/database.md) — data model and storage design
-- [docs/dev-guide.md](docs/dev-guide.md) — local workflow and troubleshooting notes
-- [docs/advanced-performance.md](docs/advanced-performance.md) — scale, export, and multi-tenant design targets
-
-## Quick start
+## 7. Cách chạy nhanh
 
 ```bash
-chmod +x scripts/setup-env.sh
-./scripts/setup-env.sh
+docker compose up --build -d
 ```
 
-This single script will:
-
-- create `client/.env` and `server/.env` from the example files if they do not exist
-- auto-fill safe demo defaults for a first-run local setup
-- keep the app bootable even before a real Google OAuth client ID is configured
-- start Docker Compose automatically from the project root
-
-Important:
-
-- Google sign-in will still need a real OAuth client ID if you want the login flow to work fully.
-- The app will start in demo mode so the system is runnable without a deep technical setup.
-
-Then open (ports configurable via `server/.env` and `docker-compose` environment):
-
+Sau đó truy cập:
 - Frontend: http://localhost:5173
-- Backend: http://localhost:${SERVER_PORT:-5000}
--- Health: http://localhost:${SERVER_PORT:-5000}/api/ready
+- Backend ready check: http://localhost:5000/api/ready
 
-## Google OAuth setup & running locally
+---
 
-If you want the Google sign-in flow to work for reviewers, follow these steps or run the included script which will prompt for required values.
+## 8. Ghi chú
 
-1. Create a Google OAuth Client ID
+Tài liệu chi tiết yêu cầu và thiết kế nằm trong thư mục [plans](plans):
+- [plans/REQUIREMENTS.md](plans/REQUIREMENTS.md)
+- [plans/system-architecture.md](plans/system-architecture.md)
+- [plans/db-design.md](plans/db-design.md)
 
-- Open the Google Cloud Console: https://console.cloud.google.com/
-- Create or select a Project.
-- Configure the OAuth consent screen (External or Internal depending on your use case).
-- Go to "Credentials" → "Create Credentials" → "OAuth client ID" → choose "Web application".
-- Add the following Authorized JavaScript origins for local development:
-    - `http://localhost:5173`
-- Copy the generated **Client ID** (format: `1234567890-abcde12345.apps.googleusercontent.com`).
-
-2. Populate `.env` (recommended: use the helper script)
-
-Recommended: run the helper script which will prompt and validate keys, then start Docker.
-
-On macOS / Linux (recommended):
-
-```bash
-chmod +x scripts/setup-env.sh
-./scripts/setup-env.sh
-```
-
-On Windows (PowerShell):
-
-```powershell
-# from project root
-.\scripts\setup-env.ps1
-# or to also start Docker:
-.\scripts\setup-env.ps1 -StartDocker
-```
-
-Manual alternative:
-
-```bash
-cp client/.env.example client/.env
-cp server/.env.example server/.env
-# Edit client/.env and server/.env: set VITE_GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID, JWT_SECRET
-```
-
-3. Generate a secure `JWT_SECRET` (optional helper)
-
-```bash
-openssl rand -base64 32
-```
-
-4. Start Docker (if you didn't use the script)
-
-```bash
-docker compose up --build
-```
-
-Notes
-- Do NOT commit your `.env` files; keep only `*.example` in the repo.
-- `GOOGLE_CLIENT_ID` in `server/.env` must match `VITE_GOOGLE_CLIENT_ID` in `client/.env` exactly.
-- For production, replace placeholders with credentialed URIs and use a secret manager.
-
-## Running the project
-
-### Required environment setup before Docker
-
-This project expects the real env files to exist before startup. If they are missing, Docker will not run correctly and the app will show clear configuration errors instead of silently failing.
-
-```bash
-cp client/.env.example client/.env
-cp server/.env.example server/.env
-```
-
-Then fill in the required values in those files:
-
-- `client/.env`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`
-- `server/.env`: `PORT`, `MONGO_URI`, `REDIS_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `CORS_ORIGIN`
-
-Important:
-
-- `JWT_SECRET` must be a real secure random string.
-- `GOOGLE_CLIENT_ID` in the server must match the same value used by `VITE_GOOGLE_CLIENT_ID` in the client.
-- Do not commit real `.env` files. Only `.env.example` files are safe to keep in the repo.
-
-If any required value is still left as a placeholder such as `replace_with_...` or `your-google-client-id-here`, the application will fail fast with a clear startup message telling you exactly which variable must be updated.
-
-### With Docker
-
-```bash
-docker compose up --build
-```
-
-Access points after startup:
-
-- Frontend: http://localhost:5173
-- Backend: http://localhost:5000
-- Health check: http://localhost:5000/api/ready
-
-### Local development
-
-Terminal 1:
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-Terminal 2:
-
-```bash
-cd server
-npm install
-npm run dev
-```
-
-### Environment variables
-
-If needed, copy the example environment files:
-
-```bash
-cp client/.env.example client/.env
-cp server/.env.example server/.env
-```
-
-Common variables include:
-
-- `JWT_SECRET`
-- `GOOGLE_CLIENT_ID`
-- `MONGO_URI`
-- `REDIS_URL`
-- `CORS_ORIGIN`
-- `VITE_API_URL`
-
-## Validation
-
-The project includes automated checks for core logic such as:
-
-- wallet balance validation
-- statement calculations
-- PDF and Excel export generation
-- queue behavior
-- health status logic
-
-Run the test suite with:
-
-```bash
-cd server
-npm test
-```
-
-## Advanced design goals
-
-This application is designed beyond a basic CRUD demo. The key scale goals are:
-
-- support one user with 100 bank accounts and millions of transactions
-- generate PDF and Excel reports for very large datasets
-- design a multi-tenant architecture capable of handling millions of requests per minute
-
-The detailed design note for these targets is available in [docs/advanced-performance.md](docs/advanced-performance.md).
-
-## Conclusion
-
-Personal Expense Management is a full-stack financial application built around realistic personal money management use cases. It combines authentication, wallet accounting, transaction tracking, statement summaries, and export processing into a cohesive and deployable platform.
-
-The repository is structured to make the product understandable at a glance while keeping deeper engineering details in the documentation folder for readers who want more technical depth.
+Đây là một bản tóm tắt thực trạng để dễ theo dõi tiến độ và phân biệt giữa phần đã hoàn thành và phần đang cần phát triển tiếp.

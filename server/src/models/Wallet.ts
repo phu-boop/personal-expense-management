@@ -1,34 +1,32 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema, type Document } from 'mongoose';
 
 export interface IWallet extends Document {
-  tenantId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   name: string;
+  bankName?: string;
   accountNumber?: string;
-  initialBalance: number;
+  currency: string;
+  openingBalance: number;
+  openingDate: Date;
   currentBalance: number;
-  colorTheme?: string;
-  startDate: Date;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const WalletSchema = new Schema<IWallet>(
+const walletSchema = new Schema<IWallet>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     name: { type: String, required: true },
-    accountNumber: { type: String },
-    initialBalance: { type: Number, required: true, default: 0 },
-    currentBalance: { type: Number, required: true, default: 0 },
-    colorTheme: { type: String, default: 'emerald' },
-    startDate: { type: Date, required: true },
+    bankName: { type: String, default: '' },
+    accountNumber: { type: String, default: '' },
+    currency: { type: String, default: 'VND' },
+    openingBalance: { type: Number, default: 0 },
+    openingDate: { type: Date, required: true },
+    currentBalance: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
-WalletSchema.index({ tenantId: 1, userId: 1, createdAt: -1 });
-WalletSchema.index({ tenantId: 1, userId: 1, name: 1 });
-WalletSchema.index({ tenantId: 1, userId: 1, accountNumber: 1 });
-
-export default mongoose.model<IWallet>('Wallet', WalletSchema);
+export const WalletModel = mongoose.models.Wallet || mongoose.model<IWallet>('Wallet', walletSchema);

@@ -17,10 +17,19 @@ interface Transaction {
   type: 'INCOME' | 'EXPENSE';
   amount: number;
   category: string;
-  walletId: Wallet;
+  walletId: Wallet | string;
   date: string;
   note?: string;
   balanceAfter: number;
+}
+
+interface TransactionAuditLog {
+  _id: string;
+  transactionId: string;
+  changedAt: string;
+  changeReason: string;
+  oldValues?: Record<string, any>;
+  newValues?: Record<string, any>;
 }
 
 const Transactions: React.FC = () => {
@@ -48,6 +57,48 @@ const Transactions: React.FC = () => {
   const [note, setNote] = useState('');
 
   const [submitError, setSubmitError] = useState('');
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isUserHistoryOpen, setIsUserHistoryOpen] = useState(false);
+  const [historyLogs, setHistoryLogs] = useState<TransactionAuditLog[]>([]);
+  const [historyTransaction, setHistoryTransaction] = useState<Transaction | null>(null);
+  const [userHistoryLogs, setUserHistoryLogs] = useState<TransactionAuditLog[]>([]);
+
+  const normalizeDateValue = (value: string) => {
+    const parsed = new Date(`${value}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  };
+
+  const resetForm = (preferredWalletId?: string) => {
+    const fallbackWalletId = preferredWalletId ?? (paramWalletId || wallets[0]?._id || '');
+    setTxType('EXPENSE');
+    setAmount('');
+    setWalletId(fallbackWalletId);
+    setCategory('Food & Drink');
+    setDate(new Date().toISOString().split('T')[0]);
+    setNote('');
+    setSubmitError('');
+  };
+
+  const openAddModal = () => {
+    setEditingTransactionId(null);
+    resetForm(paramWalletId || wallets[0]?._id || '');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (tx: Transaction) => {
+    const walletValue = typeof tx.walletId === 'string' ? tx.walletId : tx.walletId?._id || '';
+    setEditingTransactionId(tx._id);
+    setTxType(tx.type);
+    setAmount(String(tx.amount));
+    setWalletId(walletValue);
+    setCategory(tx.category);
+    setDate(new Date(tx.date).toISOString().split('T')[0]);
+    setNote(tx.note || '');
+    setSubmitError('');
+    setIsModalOpen(true);
+  };
 
   const fetchData = async (append = false, cursor?: string | null) => {
     if (!append) setIsLoading(true);
@@ -100,10 +151,13 @@ const Transactions: React.FC = () => {
       setFilterWallet(paramWalletId);
       setWalletId(paramWalletId);
     }
+
     if (paramAction === 'new') {
+      setEditingTransactionId(null);
+      resetForm(paramWalletId || wallets[0]?._id || '');
       setIsModalOpen(true);
     }
-  }, [searchParams, paramWalletId, paramAction]);
+  }, [searchParams, paramWalletId, paramAction, wallets]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawDigits = e.target.value.replace(/\D/g, '');
@@ -115,9 +169,86 @@ const Transactions: React.FC = () => {
     setAmount(formatted);
   };
 
-  const handleAddTransaction = async (e: React.FormEvent) => {
+  const formatAuditValue = (value: any) => {
+    if (value === null || value === undefined || value === '') return '—';
+    if (typeof value === 'number') return value.toLocaleString('vi-VN');
+    if (value instanceof Date || !Number.isNaN(Date.parse(value))) {
+      return new Date(value).toLocaleString('vi-VN');
+    }
+    if (typeof value === 'string') return value;
+    return JSON.stringify(value);
+  };
+
+  const summarizeAuditDiff = (log: TransactionAuditLog) => {
+    const oldValues = log.oldValues ?? {};
+    const newValues = log.newValues ?? {};
+    const allKeys = Array.from(new Set([...Object.keys(oldValues), ...Object.keys(newValues)]));
+
+    return allKeys
+      .filter((key) => oldValues[key] !== newValues[key])
+      .map((key) => {
+        const oldValue = oldValues[key];
+        const newValue = newValues[key];
+
+        if (key === 'amount') {
+          return `Số tiền: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)} VND`;
+        }
+
+        if (key === 'date') {
+          return `Ngày: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`;
+        }
+
+        if (key === 'type') {
+          return `Loại: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`;
+        }
+
+        if (key === 'category') {
+          return `Danh mục: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`;
+        }
+
+        if (key === 'note') {
+          return `Ghi chú: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`;
+        }
+
+        if (key === 'status') {
+          return `Trạng thái: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`;
+        }
+
+        return `${key}: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`;
+      });
+  };
+
+  const fetchAuditHistory = async (tx: Transaction) => {
+    try {
+      const res = await api.get(`/api/transactions/${tx._id}/audit`);
+      setHistoryTransaction(tx);
+      setHistoryLogs(res.data?.data ?? []);
+      setIsHistoryOpen(true);
+    } catch (error) {
+      console.error('Failed to load transaction audit history:', error);
+      setHistoryTransaction(tx);
+      setHistoryLogs([]);
+      setIsHistoryOpen(true);
+    }
+  };
+
+  const fetchUserAuditHistory = async () => {
+    try {
+      const res = await api.get('/api/transactions/audit');
+      setUserHistoryLogs(res.data?.data ?? []);
+      setIsUserHistoryOpen(true);
+    } catch (error) {
+      console.error('Failed to load user audit history:', error);
+      setUserHistoryLogs([]);
+      setIsUserHistoryOpen(true);
+    }
+  };
+
+  const handleSubmitTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
+    setIsSubmitting(true);
+
     try {
       const numericAmount = Number(amount.replace(/\D/g, ''));
       if (numericAmount <= 0) {
@@ -125,21 +256,30 @@ const Transactions: React.FC = () => {
         return;
       }
 
-      await api.post('/api/transactions', {
+      const payload = {
         walletId,
         type: txType,
         amount: numericAmount,
         category,
-        date,
-        note
-      });
+        date: normalizeDateValue(date),
+        note,
+      };
+
+      if (editingTransactionId) {
+        await api.patch(`/api/transactions/${editingTransactionId}`, payload);
+      } else {
+        await api.post('/api/transactions', payload);
+      }
+
       setIsModalOpen(false);
-      setAmount('');
-      setNote('');
-      fetchData(); // Refresh list
+      resetForm();
+      setEditingTransactionId(null);
+      await fetchData();
     } catch (error: any) {
-      console.error('Failed to add transaction:', error);
-      setSubmitError(error.response?.data?.message || 'Failed to add transaction');
+      console.error('Failed to save transaction:', error);
+      setSubmitError(error.response?.data?.message || (editingTransactionId ? 'Failed to update transaction' : 'Failed to add transaction'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -153,7 +293,10 @@ const Transactions: React.FC = () => {
       );
     }
     if (filterWallet) {
-      filtered = filtered.filter(tx => tx.walletId?._id === filterWallet);
+      filtered = filtered.filter(tx => {
+        const walletValue = typeof tx.walletId === 'string' ? tx.walletId : tx.walletId?._id;
+        return walletValue === filterWallet;
+      });
     }
     if (filterCategory) {
       filtered = filtered.filter(tx => tx.category === filterCategory);
@@ -204,10 +347,15 @@ const Transactions: React.FC = () => {
           <h1>Transactions</h1>
           <p className="subtitle">Manage and track your income and expenses.</p>
         </div>
-        <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
-          <Plus size={20} />
-          Add Transaction
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn-primary" onClick={openAddModal}>
+            <Plus size={20} />
+            Add Transaction
+          </button>
+          <button className="btn-secondary" onClick={fetchUserAuditHistory}>
+            Audit History
+          </button>
+        </div>
       </header>
 
       <div className="card transaction-list-card">
@@ -254,7 +402,7 @@ const Transactions: React.FC = () => {
                 : 'Try changing the wallet or category filters to see more records.'}
             </span>
             {transactions.length === 0 && (
-              <button className="btn-primary" onClick={() => setIsModalOpen(true)}>Add Transaction</button>
+              <button className="btn-primary" onClick={openAddModal}>Add Transaction</button>
             )}
           </div>
         ) : (
@@ -289,11 +437,27 @@ const Transactions: React.FC = () => {
                         </div>
                         <div className="tx-details">
                           <div className="tx-category">{tx.category}</div>
-                          <div className="tx-note">{tx.note ? `${tx.note} • ` : ''}{tx.walletId?.name}</div>
+                          <div className="tx-note">{tx.note ? `${tx.note} • ` : ''}{typeof tx.walletId === 'string' ? tx.walletId : tx.walletId?.name}</div>
                         </div>
                         <div className="tx-meta">
                           <div className={`tx-amount ${tx.type.toLowerCase()}`}>
                             {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('vi-VN')} VND
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="btn-secondary btn-small"
+                              onClick={() => openEditModal(tx)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary btn-small"
+                              onClick={() => fetchAuditHistory(tx)}
+                            >
+                              History
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -319,17 +483,139 @@ const Transactions: React.FC = () => {
         )}
       </div>
 
-      {isModalOpen && ReactDOM.createPortal(
-        <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) setIsModalOpen(false); }}>
-          <div className="drawer-content">
-            <div className="drawer-header">
-              <h2>Add Transaction</h2>
-              <button className="icon-btn" onClick={() => setIsModalOpen(false)}>
+      {isUserHistoryOpen && ReactDOM.createPortal(
+        <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setIsUserHistoryOpen(false); setUserHistoryLogs([]); } }}>
+          <div className="drawer-content audit-history-drawer">
+            <div className="drawer-header audit-history-header">
+              <div>
+                <p className="audit-history-kicker">Activity</p>
+                <h2>User Audit History</h2>
+              </div>
+              <button className="icon-btn" onClick={() => { setIsUserHistoryOpen(false); setUserHistoryLogs([]); }}>
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleAddTransaction} className="drawer-body">
+            <div className="drawer-body audit-history-body">
+              {userHistoryLogs.length === 0 ? (
+                <div className="audit-history-empty">
+                  <div className="audit-history-empty-icon">!</div>
+                  <strong>No audit history found.</strong>
+                  <span>There are no activity logs for this account yet.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="audit-history-summary">
+                    <div className="audit-history-stat">
+                      <span>Total records</span>
+                      <strong>{userHistoryLogs.length}</strong>
+                    </div>
+                  </div>
+
+                  <div className="audit-history-list">
+                    {userHistoryLogs.map((log) => {
+                      const diffs = summarizeAuditDiff(log);
+                      return (
+                        <div key={log._id} className="audit-history-item">
+                          <div className="audit-history-item-top">
+                            <div className="audit-history-reason-wrap">
+                              <span className="audit-history-badge">Update</span>
+                              <strong>{log.changeReason}</strong>
+                            </div>
+                            <span className="audit-history-time">{new Date(log.changedAt).toLocaleString('vi-VN')}</span>
+                          </div>
+
+                          <div className="audit-history-details">
+                            <div className="audit-history-transaction">
+                              <span>Transaction</span>
+                              <strong>{log.transactionId}</strong>
+                            </div>
+                            {diffs.length > 0 ? (
+                              <div className="audit-history-diff">
+                                {diffs.map((item, index) => (
+                                  <div key={`${log._id}-${index}`} className="audit-history-diff-item">• {item}</div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="audit-history-diff-item muted">• Không có thay đổi chi tiết.</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {isHistoryOpen && ReactDOM.createPortal(
+        <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setIsHistoryOpen(false); setHistoryTransaction(null); setHistoryLogs([]); } }}>
+          <div className="drawer-content" style={{ maxWidth: '520px' }}>
+            <div className="drawer-header">
+              <h2>Transaction History</h2>
+              <button className="icon-btn" onClick={() => { setIsHistoryOpen(false); setHistoryTransaction(null); setHistoryLogs([]); }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="drawer-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {historyTransaction && (
+                <div style={{ background: 'var(--surface-soft)', borderRadius: '12px', padding: '0.75rem 1rem', border: '1px solid var(--border)' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>{historyTransaction.category}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    {historyTransaction.type === 'INCOME' ? '+' : '-'}{historyTransaction.amount.toLocaleString('vi-VN')} VND • {new Date(historyTransaction.date).toLocaleDateString('vi-VN')}
+                  </div>
+                </div>
+              )}
+
+              {historyLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '1rem 0' }}>No edit history yet.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {historyLogs.map((log) => {
+                    const diffs = summarizeAuditDiff(log);
+                    return (
+                      <div key={log._id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem 0.9rem', background: 'var(--surface-soft)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.35rem' }}>
+                          <strong>{log.changeReason}</strong>
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{new Date(log.changedAt).toLocaleString('vi-VN')}</span>
+                        </div>
+
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                          {diffs.length > 0 ? (
+                            diffs.map((item, index) => (
+                              <div key={`${log._id}-${index}`}>• {item}</div>
+                            ))
+                          ) : (
+                            <div>• Không có thay đổi chi tiết.</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {isModalOpen && ReactDOM.createPortal(
+        <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setIsModalOpen(false); setEditingTransactionId(null); resetForm(); } }}>
+          <div className="drawer-content">
+            <div className="drawer-header">
+              <h2>{editingTransactionId ? 'Edit Transaction' : 'Add Transaction'}</h2>
+              <button className="icon-btn" onClick={() => { setIsModalOpen(false); setEditingTransactionId(null); resetForm(); }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitTransaction} className="drawer-body">
               {submitError && <div style={{ color: 'var(--expense)', marginBottom: '1rem', fontSize: '14px' }}>{submitError}</div>}
 
               <div className="type-toggle">
@@ -400,9 +686,9 @@ const Transactions: React.FC = () => {
               </div>
 
               <div className="drawer-footer">
-                <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className={`btn-primary ${txType.toLowerCase()}-btn`}>
-                  Add {txType === 'INCOME' ? 'Income' : 'Expense'}
+                <button type="button" className="btn-secondary" onClick={() => { setIsModalOpen(false); setEditingTransactionId(null); resetForm(); }}>Cancel</button>
+                <button type="submit" className={`btn-primary ${txType.toLowerCase()}-btn`} disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : (editingTransactionId ? 'Save Changes' : `Add ${txType === 'INCOME' ? 'Income' : 'Expense'}`)}
                 </button>
               </div>
             </form>
