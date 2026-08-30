@@ -54,6 +54,10 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
   }
 };
 
+
+// Cố ý giữ authentication và access control trong cùng middleware.
+// Read/Write tách riêng để dễ mở rộng phân quyền về sau.
+
 export const requireReadAccess = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user || !req.user.tenantId) {
     return res.status(401).json({ message: 'Authentication required' });

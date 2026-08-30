@@ -5,10 +5,10 @@ export interface IWallet extends Document {
   userId: mongoose.Types.ObjectId;
   name: string;
   accountNumber?: string;
-  initialBalance: number;
-  currentBalance: number;
-  colorTheme?: string;
-  startDate: Date;
+  initialBalance: mongoose.Types.Decimal128;
+  initialBalanceDate: Date;
+  currentBalance: mongoose.Types.Decimal128;
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,10 +19,10 @@ const WalletSchema = new Schema<IWallet>(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     name: { type: String, required: true },
     accountNumber: { type: String },
-    initialBalance: { type: Number, required: true, default: 0 },
-    currentBalance: { type: Number, required: true, default: 0 },
-    colorTheme: { type: String, default: 'emerald' },
-    startDate: { type: Date, required: true },
+    initialBalance: { type: Schema.Types.Decimal128, required: true, default: 0 },
+    initialBalanceDate: { type: Date, required: true },
+    currentBalance: { type: Schema.Types.Decimal128, required: true, default: 0 },
+    version: { type: Number, required: true, default: 0 },
   },
   { timestamps: true }
 );
@@ -31,4 +31,5 @@ WalletSchema.index({ tenantId: 1, userId: 1, createdAt: -1 });
 WalletSchema.index({ tenantId: 1, userId: 1, name: 1 });
 WalletSchema.index({ tenantId: 1, userId: 1, accountNumber: 1 });
 
-export default mongoose.model<IWallet>('Wallet', WalletSchema);
+export const Wallet = mongoose.model<IWallet>('Wallet', WalletSchema);
+export default Wallet;

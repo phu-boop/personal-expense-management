@@ -82,7 +82,7 @@ services:
 
   mongo:
     image: mongo:6
-    command: ["mongod", "--bind_ip_all", "--port", "27017"]
+    command: ["mongod", "--bind_ip_all", "--port", "27017", "--replSet", "rs0"]
     ports:
       - "27017:27017"
     volumes:

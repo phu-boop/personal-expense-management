@@ -3,7 +3,7 @@ services:
     image: mongo:6
     container_name: pem-local-mongo
     restart: unless-stopped
-    command: ["mongod", "--bind_ip_all", "--port", "27017"]
+    command: ["mongod", "--bind_ip_all", "--port", "27017", "--replSet", "rs0"]
     ports:
       - "27017:27017"
     volumes:
