@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import BottomNav from './BottomNav';
 import api from '../../api/api';
+import services from '../../api/services';
 import './layout.css';
 
 const AppLayout: React.FC = () => {
@@ -19,7 +20,7 @@ const AppLayout: React.FC = () => {
 
   const checkWallets = async () => {
     try {
-      const res = await api.get('/api/wallets');
+      const res = await services.wallets.list();
       const walletList = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
 
       if (walletList.length === 0) {
@@ -54,7 +55,7 @@ const AppLayout: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      await api.post('/api/wallets', {
+      await services.wallets.create({
         name,
         accountNumber,
         initialBalance: Number(initialBalance.replace(/\D/g, '')) || 0,

@@ -1,3 +1,6 @@
+// tenantId chưa được sử dụng ở thời điểm hiện tại,
+// nhưng được chuẩn bị sẵn để mở rộng multi-tenant sau này.
+
 import mongoose, { Document, Schema } from 'mongoose';
 
 export enum TenantStatus {

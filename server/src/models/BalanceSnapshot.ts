@@ -38,7 +38,7 @@ const BalanceSnapshotSchema = new Schema<IBalanceSnapshot>(
 );
 
 BalanceSnapshotSchema.index({ tenantId: 1, walletId: 1, status: 1, snapshotAt: -1 });
-BalanceSnapshotSchema.index({ tenantId: 1, walletId: 1, lastTransactionDate: 1, lastTransactionCreatedAt: 1, lastTransactionId: 1 });
+BalanceSnapshotSchema.index({ tenantId: 1, walletId: 1, status: 1, lastTransactionDate: 1, lastTransactionCreatedAt: 1, lastTransactionId: 1 });
 
 export const BalanceSnapshot = mongoose.model<IBalanceSnapshot>('BalanceSnapshot', BalanceSnapshotSchema);
 export default BalanceSnapshot;

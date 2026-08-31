@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Plus, Search, ArrowUpRight, ArrowDownRight, X, Folder } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api/api';
+import services from '../api/services';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import './transactions.css';
@@ -60,8 +61,8 @@ const Transactions: React.FC = () => {
       if (filterCategory) params.set('category', filterCategory);
 
       const [txRes, walletsRes] = await Promise.all([
-        api.get(`/api/transactions?${params.toString()}`),
-        api.get('/api/wallets')
+        services.transactions.listWithQueryString(params.toString()),
+        services.wallets.list()
       ]);
 
       const walletList = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.data ?? []);
@@ -125,7 +126,7 @@ const Transactions: React.FC = () => {
         return;
       }
 
-      await api.post('/api/transactions', {
+      await services.transactions.create({
         walletId,
         type: txType,
         amount: numericAmount,

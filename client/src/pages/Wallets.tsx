@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Plus, CreditCard, X, Eye, EyeOff, BarChart3, PlusCircle, ListFilter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/api';
+import services from '../api/services';
 import './wallets.css';
 
 interface Wallet {
@@ -32,10 +33,7 @@ const Wallets: React.FC = () => {
   const fetchWallets = async (nextPage = page) => {
     setIsLoading(true);
     try {
-      const res = await api.get('/api/wallets', {
-        params: { page: nextPage, limit: PAGE_SIZE }
-      });
-
+      const res = await services.wallets.list({ page: nextPage, limit: PAGE_SIZE });
       const walletList = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
       const nextTotalPages = Math.max(1, Number(res.data?.totalPages ?? 1));
 
@@ -73,7 +71,7 @@ const Wallets: React.FC = () => {
   const handleCreateWallet = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/api/wallets', {
+      await services.wallets.create({
         name,
         accountNumber,
         initialBalance: Number(initialBalance.replace(/\D/g, '')) || 0,

@@ -6,7 +6,7 @@ export interface IUser extends Document {
   name: string;
   avatar?: string;
   tenantId?: mongoose.Types.ObjectId;
-  // role removed
+  // role
   createdAt: Date;
 }
 
@@ -17,7 +17,7 @@ const UserSchema = new Schema<IUser>(
     name: { type: String, required: true },
     avatar: { type: String },
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
-    // role removed
+    // role
   },
   { timestamps: true }
 );

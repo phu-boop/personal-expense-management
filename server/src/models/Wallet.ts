@@ -27,6 +27,7 @@ const WalletSchema = new Schema<IWallet>(
   { timestamps: true }
 );
 
+WalletSchema.index({ tenantId: 1, userId: 1, createdAt: -1, _id: -1 });
 WalletSchema.index({ tenantId: 1, userId: 1, createdAt: -1 });
 WalletSchema.index({ tenantId: 1, userId: 1, name: 1 });
 WalletSchema.index({ tenantId: 1, userId: 1, accountNumber: 1 });

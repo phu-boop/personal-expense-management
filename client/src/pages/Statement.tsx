@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Download, Folder } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api/api';
+import services from '../api/services';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import './statement.css';
@@ -61,14 +62,8 @@ const Statement: React.FC = () => {
     setIsLoading(true);
     try {
       const [walletsRes, statementRes] = await Promise.all([
-        api.get('/api/wallets'),
-        api.get('/api/transactions/statement', {
-          params: {
-            walletId: walletId || undefined,
-            startDate,
-            endDate,
-          },
-        }),
+        services.wallets.list(),
+        services.transactions.statement({ walletId: walletId || undefined, startDate, endDate }),
       ]);
 
       const walletList = Array.isArray(walletsRes.data)
@@ -149,7 +144,7 @@ const Statement: React.FC = () => {
         format,
       };
 
-      const createRes = await api.post('/api/exports', payload);
+      const createRes = await services.exports.create(payload);
       const jobId = createRes.data.jobId;
       updateExportQueueTask(taskId, { step: 'Generating report...', progress: 35 });
 
@@ -168,9 +163,7 @@ const Statement: React.FC = () => {
           throw new Error('Export polling timed out.');
         }
 
-        const jobRes = await api.get(`/api/exports/${jobId}`, {
-          headers: { 'Cache-Control': 'no-cache' },
-        });
+        const jobRes = await services.exports.get(jobId);
         const status = jobRes.data.status;
 
         if (status === 'COMPLETED') {
@@ -181,7 +174,7 @@ const Statement: React.FC = () => {
           });
 
           try {
-            const resp = await api.get(`/api/exports/${jobId}/download`, { responseType: 'blob' });
+            const resp = await services.exports.download(jobId, { responseType: 'blob' });
             const blob = resp.data as Blob;
             const url = window.URL.createObjectURL(blob);
             const anchor = document.createElement('a');

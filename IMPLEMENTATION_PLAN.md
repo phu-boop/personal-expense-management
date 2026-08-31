@@ -1,224 +1,1238 @@
-# Implementation Plan — Transaction Rework
+0. Kiến trúc cuối cùng
+                    ┌──────────────────┐
+                    │      users       │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │     wallets      │
+                    │                  │
+                    │ initialBalance   │
+                    │ currentBalance   │
+                    │ version          │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │   transactions   │
+                    │                  │
+                    │ SOURCE OF TRUTH  │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┴─────────────┐
+              ▼                            ▼
+    ┌──────────────────┐          ┌──────────────────┐
+    │ balance_snapshots│          │   report_jobs    │
+    │ optimization     │          │ async export     │
+    └──────────────────┘          └────────┬─────────┘
+                                           │
+                                           ▼
+                                    ┌──────────────┐
+                                    │ ExportWorker │
+                                    └──────┬───────┘
+                                           │
+                                           ▼
+                                      CSV/XLSX/PDF
 
-## Goal
+Điểm quan trọng:
 
-Implement the transaction architecture so that:
+transactions
+     ↓
+SOURCE OF TRUTH
 
-- `transactions` is the source of truth.
-- `wallet.currentBalance` is the current aggregate state.
-- historical edits do not cascade to other transactions.
-- running balances are derived at read/export time using canonical ordering.
-- snapshoting is an optimization only and must be invalidated when historical edits affect ordering/effect.
+wallet.currentBalance
+     ↓
+CURRENT STATE
 
----
+balance_snapshots
+     ↓
+PERFORMANCE CHECKPOINT
 
-## Phase 1 — Repository inspection and baseline validation
+report_jobs
+     ↓
+JOB METADATA
+Phase 1 — Dọn schema trước
 
-- [ ] Inspect all current transaction and wallet model files
-  - [ ] `server/src/models/Transaction.ts`
-  - [ ] `server/src/models/Wallet.ts`
-  - [ ] `server/src/services/transactionService.ts`
-  - [ ] `server/src/routes/transaction.ts`
-  - [ ] `server/src/validators/transactionValidator.ts`
-  - [ ] `server/src/services/balanceService.ts`
-- [ ] Check whether existing code persists `balanceBefore` / `balanceAfter`
-- [ ] Confirm current indexes and query patterns
-- [ ] Confirm test/build commands in `server/package.json`
-- [ ] Document current root cause before code changes
+Bạn đã có 6 collection:
 
-Definition of done:
-- We know the exact repository structure and the current anti-patterns we must remove.
+tenants
+users
+wallets
+transactions
+balance_snapshots
+report_jobs
 
----
+Giữ nguyên.
 
-## Phase 2 — Schema alignment to the target architecture
+wallet
+{
+  _id: ObjectId,
+  tenantId: ObjectId,
+  userId: ObjectId,
 
-- [ ] Update `Transaction` schema to remove persisted running-balance fields
-- [ ] Add canonical ordering indexes:
-  - `{ tenantId: 1, walletId: 1, date: 1, createdAt: 1, _id: 1 }`
-  - keep required tenant/user scoping indexes
-- [ ] Update `Wallet` schema with:
-  - `initialBalanceDate?: Date`
-  - `version?: number`
-- [ ] Decide and document `initialBalanceDate` business rule
-  - preferred: reject transactions before `initialBalanceDate`
-  - if not possible, document semantics explicitly
-- [ ] Ensure `amount` and `currentBalance` are stored with an exact numeric type strategy
-  - prefer Mongo `Decimal128` or equivalent exact decimal handling
+  name: string,
+  accountNumber?: string,
 
-Definition of done:
-- Models match the architecture and no longer encode persisted running balances.
+  initialBalance: Decimal128,
+  initialBalanceDate: Date,
 
----
+  currentBalance: Decimal128,
 
-## Phase 3 — Transaction write logic
+  version: number,
 
-### 3.1 `createTransaction()`
+  createdAt: Date,
+  updatedAt: Date
+}
+transaction
 
-- [ ] Validate input and wallet ownership
-- [ ] Start MongoDB session / transaction
-- [ ] Read wallet by `{ _id, tenantId, userId }`
-- [ ] Compute effect from `type`
-  - `INCOME` => `+amount`
-  - `EXPENSE` => `-amount`
-- [ ] Validate `wallet.currentBalance + effect >= 0`
-- [ ] Insert new transaction document
-- [ ] Update `wallet.currentBalance += effect`
-- [ ] Increment `wallet.version`
-- [ ] Commit transaction
-- [ ] Retry on transient transaction/write-conflict errors
-- [ ] Return created transaction
+Xóa hoàn toàn:
 
-### 3.2 `editTransaction()`
+balanceBefore
+balanceAfter
 
-- [ ] Load existing transaction by `{ _id, tenantId, userId }`
-- [ ] Calculate:
-  - `oldEffect`
-  - `newEffect`
-  - `delta = newEffect - oldEffect`
-- [ ] Start MongoDB session / transaction
-- [ ] Read wallet for update by wallet id
-- [ ] Validate `wallet.currentBalance + delta >= 0`
-- [ ] Apply transaction changes only for the edited transaction
-  - `amount`, `type`, `date`, `note`
-- [ ] Update `wallet.currentBalance += delta`
-- [ ] Increment `wallet.version`
-- [ ] Commit transaction
-- [ ] Retry on transient write conflicts
-- [ ] Return updated transaction
+Model:
 
-### 3.3 Special cases
+{
+  _id: ObjectId,
+  tenantId: ObjectId,
+  userId: ObjectId,
+  walletId: ObjectId,
 
-- [ ] Allow note-only edits with `delta == 0`
-- [ ] Treat date-change as an ordering mutation even when delta == 0
-- [ ] Reject insufficient balance with explicit `409`/business error semantics
-- [ ] Ensure no other transactions are rewritten or recomputed
+  amount: Decimal128,
+  type: 'INCOME' | 'EXPENSE',
 
-Definition of done:
-- `createTransaction` and `editTransaction` both satisfy the invariant without cascade updates.
+  category?: ObjectId,
 
----
+  date: Date,
+  note?: string,
 
-## Phase 4 — MongoDB concurrency and write-conflict handling
+  createdAt: Date,
+  updatedAt: Date
+}
+Phase 2 — Tạo index
 
-- [ ] Explicitly ban `SELECT ... FOR UPDATE`-style assumptions
-- [ ] Use MongoDB transaction semantics when available
-- [ ] Add retry loop for transient transaction errors and write conflicts
-- [ ] Serialize wallet balance updates through the wallet document
-- [ ] Ensure only one concurrent update wins; the loser retries and rechecks balance
-- [ ] Document expected behavior for concurrent A/B edits to the same wallet
+Đây là index cực kỳ quan trọng:
 
-Definition of done:
-- Two concurrent wallet writes cannot violate the invariant.
+transactionSchema.index({
+  tenantId: 1,
+  walletId: 1,
+  date: 1,
+  createdAt: 1,
+  _id: 1,
+});
 
----
+Nó phục vụ:
 
-## Phase 5 — History / statement / pagination logic
+tenant isolation
+       +
+wallet filtering
+       +
+canonical ordering
 
-- [ ] Query transactions using canonical ordering
-  - `(date ASC, createdAt ASC, _id ASC)`
-- [ ] Use cursor-based pagination with opaque cursor
-  - cursor payload: `{ date, createdAt, _id }`
-- [ ] Compute `openingBalance` as the balance immediately before the first row in the page
-- [ ] Derive per-row `balanceBefore` / `balanceAfter` at read time
-- [ ] Do not trust `wallet.currentBalance` to reconstruct historical pages
-- [ ] Use half-open date range filtering: `[fromDate, toDate)`
-- [ ] Convert report boundaries from user timezone to UTC before query
+Canonical ordering:
 
-Definition of done:
-- The API returns correct page-level opening balance and row-level derived balances without recomputing millions of historical rows for each page.
+date ASC
+createdAt ASC
+_id ASC
 
----
+Ngoài ra nên có:
 
-## Phase 6 — Snapshot strategy
+walletSchema.index({
+  tenantId: 1,
+  userId: 1,
+});
 
-- [ ] Add `balance_snapshots` collection design
-- [ ] Define snapshot checkpoint as ordering tuple:
-  - `(date, createdAt, _id)`
-- [ ] Include `status: VALID | INVALID`
-- [ ] Add logic to invalidate snapshot when a historical transaction changes:
-  - amount
-  - type
-  - date
-- [ ] Snapshot is used only as optimization, never as source of truth
-- [ ] If snapshot is stale or invalid, fallback to a valid checkpoint or initial-balance scan
-- [ ] Do not rewrite transaction documents during invalidation
+transactionSchema.index({
+  tenantId: 1,
+  walletId: 1,
+});
 
-Definition of done:
-- Snapshot validity is tied to the actual ordering boundary and historical mutations, not creation time alone.
+snapshotSchema.index({
+  tenantId: 1,
+  walletId: 1,
+  status: 1,
+  lastTransactionDate: 1,
+  lastTransactionCreatedAt: 1,
+  lastTransactionId: 1,
+});
 
----
+reportJobSchema.index({
+  tenantId: 1,
+  userId: 1,
+  createdAt: -1,
+});
+Phase 3 — Decimal utility
 
-## Phase 7 — Reporting/export worker
+Tuyệt đối không:
 
-- [ ] Create `report_jobs` doc lifecycle
-- [ ] Enqueue export job in async worker system
-- [ ] Worker determines valid starting balance
-  - prefer valid snapshot
-  - fallback to aggregate/scan near boundary
-- [ ] Stream transactions in canonical order
-- [ ] Write CSV/XLSX/PDF incrementally without loading full dataset into memory
-- [ ] Mark job as `COMPLETED` with file metadata
-- [ ] Document eventual consistency vs strict point-in-time snapshot behavior
+Number(amount)
 
-Definition of done:
-- Large exports can run without OOM and without recomputing all history per page.
+để tính tiền.
 
----
+Tạo:
 
-## Phase 8 — Validation and tests
+server/src/utils/money.ts
 
-### Unit tests
+Ví dụ:
 
-- [ ] `createTransaction` success for income
-- [ ] `createTransaction` success for expense
-- [ ] `createTransaction` rejects negative resulting balance
-- [ ] `editTransaction` updates amount correctly
-- [ ] `editTransaction` updates type correctly
-- [ ] `editTransaction` date-only change does not affect wallet balance
-- [ ] `editTransaction` note-only change does not affect wallet balance
-- [ ] `editTransaction` rejects negative wallet resulting balance
+import mongoose from 'mongoose';
 
-### Integration tests
+export type Decimal128 = mongoose.Types.Decimal128;
 
-- [ ] Concurrent edit test on same wallet with conflicting deltas
-- [ ] Snapshot invalidation on date change
-- [ ] Page opening balance correctness across pages
+export function decimal(value: string | number | Decimal128) {
+  if (mongoose.Types.Decimal128.isDecimal128(value)) {
+    return value;
+  }
 
-### Performance tests
+  return mongoose.Types.Decimal128.fromString(String(value));
+}
 
-- [ ] 100k-row bulk insert generator
-- [ ] 1M-row bulk insert generator for wallet history
-- [ ] export benchmark and memory profile
+export function addDecimal(
+  a: Decimal128,
+  b: Decimal128,
+): Decimal128 {
+  return decimal(
+    (parseFloat(a.toString()) + parseFloat(b.toString())).toFixed(2),
+  );
+}
 
-Definition of done:
-- The implementation is validated both for correctness and for large-data behavior.
+Nhưng lưu ý: đoạn trên chỉ minh họa. Với financial calculation thật, không dùng parseFloat.
 
----
+Tốt hơn là dùng thư viện decimal chính xác như decimal.js.
 
-## Phase 9 — Final verification before merge
+npm install decimal.js
 
-- [ ] Run TypeScript build
-- [ ] Run relevant tests
-- [ ] Review diff against architecture rules
-- [ ] Check no code persists running balances
-- [ ] Confirm no historical transaction rewrite is required for edits
-- [ ] Confirm index and query semantics align with canonical ordering
-- [ ] Confirm concurrency rules are documented and implemented
+Sau đó:
 
-Definition of done:
-- The branch is consistent with the spec and safe for the next implementation iteration.
+import Decimal from 'decimal.js';
 
----
+export function toDecimal(value: mongoose.Types.Decimal128 | string) {
+  return new Decimal(value.toString());
+}
+Phase 4 — Effect utility
 
-## Suggested implementation order for this repo
+Tạo:
 
-1. Models and schema cleanup
-2. `createTransaction()` and `editTransaction()`
-3. MongoDB transaction retry / write conflict handling
-4. History and pagination logic
-5. Snapshot invalidation design
-6. Report/export worker
-7. Tests and performance harness
+server/src/utils/transactionEffect.ts
+import Decimal from 'decimal.js';
 
-This sequence keeps the work correct and avoids building export logic on top of a broken balance model.
+export function getTransactionEffect(
+  amount: Decimal,
+  type: 'INCOME' | 'EXPENSE',
+): Decimal {
+  return type === 'INCOME'
+    ? amount
+    : amount.negated();
+}
+
+Ví dụ:
+
+INCOME  5000000
+       ↓
++5000000
+
+EXPENSE 2000000
+       ↓
+-2000000
+Phase 5 — MongoDB Replica Set
+
+Vì bạn dùng MongoDB transaction nên local phải chạy replica set.
+
+Docker Compose:
+
+mongo:
+  image: mongo:6
+  command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+  ports:
+    - "27017:27017"
+
+Sau đó:
+
+docker compose up -d mongo
+
+Init:
+
+docker exec -it mongo mongosh
+rs.initiate()
+
+Check:
+
+rs.status()
+
+Phải thấy:
+
+PRIMARY
+Phase 6 — Implement createTransaction
+
+File:
+
+server/src/services/transactionService.ts
+
+Flow:
+
+request
+   ↓
+validate
+   ↓
+load wallet
+   ↓
+calculate effect
+   ↓
+Mongo transaction
+   ↓
+check currentBalance + effect
+   ↓
+insert transaction
+   ↓
+update wallet.currentBalance
+   ↓
+commit
+
+Pseudo code:
+
+const session = await mongoose.startSession();
+
+try {
+  await session.withTransaction(async () => {
+
+    const wallet = await Wallet.findOne({
+      _id: walletId,
+      tenantId,
+      userId,
+    }).session(session);
+
+    if (!wallet) {
+      throw new NotFoundError();
+    }
+
+    const effect = getTransactionEffect(
+      amount,
+      type,
+    );
+
+    const newBalance =
+      toDecimal(wallet.currentBalance)
+        .plus(effect);
+
+    if (newBalance.isNegative()) {
+      throw new InsufficientBalanceError();
+    }
+
+    const [transaction] = await Transaction.create(
+      [{
+        tenantId,
+        userId,
+        walletId,
+        amount,
+        type,
+        date,
+        category,
+        note,
+      }],
+      { session },
+    );
+
+    wallet.currentBalance =
+      mongoose.Types.Decimal128.fromString(
+        newBalance.toFixed(2),
+      );
+
+    wallet.version += 1;
+
+    await wallet.save({ session });
+
+    result = transaction;
+  });
+
+} finally {
+  await session.endSession();
+}
+Phase 7 — Implement editTransaction
+
+Đây là phần quan trọng nhất.
+
+Transaction cũ:
+
+EXPENSE 1,000,000
+
+New:
+
+EXPENSE 2,500,000
+
+Tính:
+
+oldEffect = -1,000,000
+
+newEffect = -2,500,000
+
+delta = -1,500,000
+
+Sau đó:
+
+currentBalance + delta
+
+Nếu:
+
+< 0
+
+→ reject.
+
+Nếu:
+
+>= 0
+
+→ update.
+
+Flow
+PATCH
+  ↓
+load transaction
+  ↓
+calculate oldEffect
+  ↓
+calculate newEffect
+  ↓
+delta
+  ↓
+Mongo transaction
+  ↓
+load wallet
+  ↓
+check currentBalance + delta
+  ↓
+update transaction
+  ↓
+update wallet
+  ↓
+commit
+Date-only edit
+oldEffect = -1,000,000
+newEffect = -1,000,000
+
+delta = 0
+
+Không update balance.
+
+Nhưng:
+
+date changed
+
+=> snapshot phía sau transaction có thể phải INVALID.
+
+Phase 8 — Snapshot
+
+Model:
+
+{
+  tenantId,
+  walletId,
+
+  snapshotAt,
+
+  balance,
+
+  lastTransactionDate,
+  lastTransactionCreatedAt,
+  lastTransactionId,
+
+  status: 'VALID' | 'INVALID',
+
+  createdAt,
+  updatedAt,
+}
+
+Snapshot:
+
+transaction #500,000
+       ↓
+balance = 20,000,000
+
+Nó có nghĩa:
+
+Balance ngay sau transaction #500,000.
+
+Phase 9 — Snapshot invalidation
+
+Đây là chỗ nhiều implementation dễ sai.
+
+Nếu transaction:
+
+#300,000
+
+bị sửa:
+
+amount
+type
+date
+
+thì snapshot:
+
+#500,000
+#600,000
+#700,000
+
+có thể bị ảnh hưởng.
+
+Không được:
+
+update transactions hàng loạt
+
+Chỉ:
+
+snapshot.status = INVALID
+Phase 10 — Tạo snapshot worker
+
+Không cần snapshot sau mỗi transaction.
+
+Ví dụ:
+
+100,000 transactions
+       ↓
+snapshot
+
+200,000 transactions
+       ↓
+snapshot
+
+300,000 transactions
+       ↓
+snapshot
+
+Ví dụ:
+
+snapshot #1
+checkpoint = transaction 100,000
+balance = 5,000,000
+
+snapshot #2
+checkpoint = transaction 200,000
+balance = 8,000,000
+
+snapshot #3
+checkpoint = transaction 300,000
+balance = 12,000,000
+Phase 11 — Viết cursor pagination
+
+API:
+
+GET /api/wallets/:walletId/transactions
+
+Sort:
+
+.sort({
+  date: 1,
+  createdAt: 1,
+  _id: 1,
+})
+
+Cursor:
+
+{
+  "date": "...",
+  "createdAt": "...",
+  "_id": "..."
+}
+
+Encode:
+
+JSON
+ ↓
+base64
+ ↓
+opaque cursor
+Phase 12 — Query page tiếp theo
+
+Nếu cursor:
+
+(date=C1, createdAt=C2, _id=C3)
+
+query:
+
+{
+  $or: [
+    {
+      date: { $gt: C1 }
+    },
+    {
+      date: C1,
+      createdAt: { $gt: C2 }
+    },
+    {
+      date: C1,
+      createdAt: C2,
+      _id: { $gt: C3 }
+    }
+  ]
+}
+
+Đây là canonical cursor.
+
+Phase 13 — Tính openingBalance
+
+Giả sử page bắt đầu ở transaction:
+
+2026-08-20 10:00
+
+Cần:
+
+openingBalance
+
+ngay trước transaction đầu tiên.
+
+Không được:
+
+wallet.currentBalance
+
+vì đó là current balance, không phải historical balance.
+
+Phase 14 — Không có snapshot
+
+Fallback:
+
+initialBalance
+       +
+SUM(effect của transaction trước page)
+
+Nhưng không:
+
+const transactions = await find(...)
+
+Mà dùng MongoDB aggregation/cursor.
+
+Phase 15 — Có snapshot
+
+Ví dụ:
+
+initialBalance
+
+       ↓
+
+snapshot
+checkpoint = 500,000
+balance = 20M
+
+       ↓
+
+transactions
+500,001 → page start
+
+       ↓
+
+openingBalance
+
+Đây là lý do snapshot giúp bài toán 1 triệu transaction nhanh hơn.
+
+Phase 16 — Export worker
+
+Tạo:
+
+server/src/workers/exportWorker.ts
+
+Flow:
+
+report_jobs
+     │
+     ▼
+PENDING
+     │
+     ▼
+IN_PROGRESS
+     │
+     ▼
+find valid snapshot
+     │
+     ▼
+calculate startingBalance
+     │
+     ▼
+Mongo cursor
+     │
+     ▼
+transaction
+     │
+     ├── balanceBefore
+     ├── effect
+     └── balanceAfter
+     │
+     ▼
+CSV stream
+     │
+     ▼
+COMPLETED
+Phase 17 — CSV streaming
+
+Ví dụ dùng:
+
+npm install csv-stringify
+
+Không làm:
+
+const rows = [];
+
+for (...) {
+  rows.push(...)
+}
+
+writeFile(rows)
+
+Vì:
+
+1M rows
+ ↓
+RAM
+ ↓
+💥
+
+Mà:
+
+Mongo Cursor
+    ↓
+row
+    ↓
+CSV stream
+    ↓
+disk
+Phase 18 — Mongo cursor
+
+Đây là đoạn cực kỳ quan trọng cho bài test:
+
+const cursor = Transaction
+  .find({
+    tenantId,
+    walletId,
+    date: {
+      $gte: fromDate,
+      $lt: toDate,
+    },
+  })
+  .sort({
+    date: 1,
+    createdAt: 1,
+    _id: 1,
+  })
+  .lean()
+  .cursor();
+
+for await (const tx of cursor) {
+
+  const balanceBefore = runningBalance;
+
+  const effect =
+    tx.type === 'INCOME'
+      ? toDecimal(tx.amount)
+      : toDecimal(tx.amount).negated();
+
+  runningBalance =
+    runningBalance.plus(effect);
+
+  const balanceAfter = runningBalance;
+
+  csvStream.write({
+    date: tx.date,
+    type: tx.type,
+    amount: tx.amount.toString(),
+    balanceBefore: balanceBefore.toFixed(2),
+    balanceAfter: balanceAfter.toFixed(2),
+  });
+}
+
+Đây là điểm ăn tiền của bài test.
+
+Phase 19 — 1 triệu transaction generator
+
+Tạo:
+
+server/src/scripts/generateTransactions.ts
+
+Không:
+
+for 1M:
+  await Transaction.create(...)
+
+Cực kỳ chậm.
+
+Dùng:
+
+bulkWrite()
+
+theo batch.
+
+Ví dụ:
+
+1,000 transactions
+      ↓
+bulkWrite
+
+1,000
+      ↓
+bulkWrite
+
+...
+
+Không tạo array 1 triệu phần tử cùng lúc.
+
+Phase 20 — Generator
+
+Pseudo:
+
+const BATCH_SIZE = 5_000;
+
+for (let i = 0; i < 1_000_000; i += BATCH_SIZE) {
+
+  const operations = [];
+
+  for (
+    let j = 0;
+    j < BATCH_SIZE && i + j < 1_000_000;
+    j++
+  ) {
+    operations.push({
+      insertOne: {
+        document: {
+          tenantId,
+          userId,
+          walletId,
+
+          amount: Decimal128.fromString(
+            randomAmount()
+          ),
+
+          type: randomType(),
+
+          date: randomDate(),
+
+          note: `Generated ${i + j}`,
+
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      },
+    });
+  }
+
+  await Transaction.bulkWrite(
+    operations,
+    { ordered: false }
+  );
+}
+Phase 21 — Cẩn thận currentBalance
+
+Nếu generate 1 triệu transaction bằng:
+
+bulkWrite transactions
+
+thì đừng quên wallet.currentBalance.
+
+Có 2 lựa chọn cho benchmark:
+
+Cách 1
+
+Generator đồng thời tính:
+
+SUM(effect)
+
+rồi update:
+
+wallet.currentBalance
+Cách 2
+
+Sau khi generate:
+
+aggregate SUM(effect)
+
+và set:
+
+currentBalance =
+initialBalance + SUM(effect)
+
+Để verify invariant.
+
+Phase 22 — Verify invariant
+
+Đây là test cực kỳ quan trọng.
+
+Query:
+
+SUM(INCOME)
+-
+SUM(EXPENSE)
++
+initialBalance
+
+So sánh:
+
+wallet.currentBalance
+
+Phải:
+
+EXPECTED == ACTUAL
+
+Ví dụ:
+
+initialBalance = 10M
+
+SUM income  = 500M
+SUM expense = 200M
+
+expected = 310M
+
+wallet.currentBalance = 310M
+
+PASS
+Phase 23 — Benchmark export
+
+Chạy:
+
+node dist/scripts/generateTransactions.js 1000000
+
+Sau đó:
+
+node dist/workers/exportWorker.js
+
+Đo:
+
+Transactions:
+1,000,000
+
+Export:
+CSV
+
+Execution:
+xx seconds
+
+Peak RAM:
+xxx MB
+
+File:
+xxx MB
+Phase 24 — Test memory
+
+Bạn có thể log:
+
+const start = process.memoryUsage().rss;
+
+...
+
+const end = process.memoryUsage().rss;
+
+console.log({
+  startMB: start / 1024 / 1024,
+  endMB: end / 1024 / 1024,
+});
+
+Tốt hơn là monitor định kỳ:
+
+setInterval(() => {
+  const memory = process.memoryUsage();
+
+  console.log({
+    rss: Math.round(memory.rss / 1024 / 1024),
+    heapUsed: Math.round(memory.heapUsed / 1024 / 1024),
+  });
+}, 1000);
+
+Bạn muốn chứng minh:
+
+1K transaction
+   ↓
+RAM X
+
+100K transaction
+   ↓
+RAM ~X + small overhead
+
+1M transaction
+   ↓
+RAM ~X + small overhead
+
+chứ không phải:
+
+1M transaction
+   ↓
+RAM tăng khủng khiếp
+Phase 25 — Test concurrent edit
+
+Test:
+
+Wallet balance = 1,000,000
+
+Transaction:
+
+expense 500,000
+
+Hai request đồng thời:
+
+Request A
+edit → expense 900,000
+delta = -400,000
+
+Request B
+edit → expense 900,000
+delta = -400,000
+
+Không được xảy ra:
+
+1,000,000
+   ↓
+-400K
+   ↓
+600K
+
+-400K
+   ↓
+200K
+
+mà transaction logic phải serialize/conflict retry đúng cách.
+
+MongoDB transaction:
+
+A ────────────────┐
+                  │
+                  ▼
+               COMMIT
+
+B ── conflict ──► retry
+                  │
+                  ▼
+              re-evaluate
+
+Retry phải tính lại balance, không dùng kết quả cũ.
+
+Phase 26 — Test historical edit
+
+Đây là test rất quan trọng.
+
+Tạo:
+
+T1: +1M
+T2: -500K
+T3: +2M
+T4: -300K
+
+Current:
+
+initial = 10M
+
+10M + 1M - 500K + 2M - 300K
+= 12.2M
+
+Edit:
+
+T2 -500K
+→ -800K
+
+delta:
+
+-300K
+
+Expected:
+
+currentBalance = 11.9M
+
+Không được update:
+
+T3.balanceBefore
+T3.balanceAfter
+T4.balanceBefore
+T4.balanceAfter
+
+vì những field đó không tồn tại.
+
+Khi đọc report:
+
+T1
+T2
+T3
+T4
+
+running balance được tính lại.
+
+Phase 27 — Test date edit
+
+Ví dụ:
+
+T2 = 2026-01-10
+
+đổi:
+
+T2 = 2026-02-10
+
+Effect không đổi:
+
+delta = 0
+
+Current balance:
+
+KHÔNG ĐỔI
+
+Nhưng snapshot:
+
+checkpoint >= vị trí bị ảnh hưởng
+
+phải:
+
+INVALID
+Phase 28 — Test snapshot correctness
+
+Test:
+
+1M transactions
+
+Tạo:
+
+snapshot @ 500K
+
+Sau đó export.
+
+So sánh:
+
+export using snapshot
+
+với:
+
+full scan from initialBalance
+
+Kết quả phải:
+
+openingBalance: SAME
+closingBalance: SAME
+
+Đây là benchmark cực kỳ đẹp để trình bày.
+
+Phase 29 — Test snapshot invalidation
+
+Scenario:
+
+snapshot
+checkpoint = T500K
+
+Edit:
+
+T300K
+
+Expected:
+
+snapshot.status = INVALID
+
+Worker:
+
+INVALID snapshot
+       ↓
+không sử dụng
+       ↓
+fallback
+
+Sau đó verify:
+
+snapshot result
+==
+full recomputation
+Phase 30 — Test 1M
+
+Cuối cùng benchmark:
+
+┌───────────────────────────────┐
+│       LARGE DATA TEST         │
+├───────────────────────────────┤
+│ Transactions: 1,000,000      │
+│ Wallets: 1                   │
+│ Database: MongoDB             │
+│ Export: CSV                   │
+│ Batch: 5,000                  │
+│ Cursor: YES                   │
+│ Snapshot: YES                 │
+└───────────────────────────────┘
+
+Đo:
+
+Generation time
+Export time
+Peak RSS
+Peak heap
+CPU
+Output file size
+Thứ tự bạn nên code thật
+
+Đừng code worker trước.
+
+Làm đúng thứ tự:
+
+PHASE 1
+Schema
+  ↓
+PHASE 2
+Indexes
+  ↓
+PHASE 3
+Decimal utility
+  ↓
+PHASE 4
+createTransaction
+  ↓
+PHASE 5
+editTransaction
+  ↓
+PHASE 6
+Unit tests
+  ↓
+PHASE 7
+Snapshot
+  ↓
+PHASE 8
+Cursor pagination
+  ↓
+PHASE 9
+openingBalance
+  ↓
+PHASE 10
+Export CSV
+  ↓
+PHASE 11
+1M generator
+  ↓
+PHASE 12
+1M benchmark
+  ↓
+PHASE 13
+Concurrency tests
+  ↓
+PHASE 14
+Snapshot invalidation tests
+  ↓
+PHASE 15
+XLSX/PDF
+Quan trọng nhất
+
+Đừng bắt đầu bằng XLSX/PDF.
+
+Bài test anh reviewer đưa cho bạn thực chất muốn xem:
+
+                1,000,000 transactions
+                         │
+                         ▼
+                  MongoDB Cursor
+                         │
+                    batch/stream
+                         │
+                         ▼
+              calculate running balance
+                         │
+                         ▼
+                  write CSV stream
+                         │
+                         ▼
+                    output file
+
+Nếu bạn làm được phần này đúng + memory ổn định + invariant luôn đúng, thì đã giải quyết được phần khó nhất của bài test.
+
+Sau đó mới gắn:
+
+Redis/Bull
+   ↓
+report_jobs
+   ↓
+exportWorker
+   ↓
+XLSX/PDF
+
+Và một lưu ý rất quan trọng: balance_snapshots không làm cho việc tính 1 triệu dòng report biến thành O(1). Nó chủ yếu giúp giảm phần tính startingBalance trước khi bắt đầu stream. Phần 1 triệu dòng trong report vẫn phải đi qua 1 triệu transaction nếu file thực sự chứa 1 triệu dòng — nhưng nhờ cursor/streaming, chi phí RAM không tăng theo toàn bộ dataset.
