@@ -154,6 +154,50 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Compact wallet list: returns a slimmer payload for frontend consumption
+router.get('/compact', async (req: AuthRequest, res: Response) => {
+  try {
+    const limit = parseLimit(req.query.limit);
+    const cursor = decodeCursor(typeof req.query.cursor === 'string' ? req.query.cursor : undefined);
+
+    const query: any = {
+      tenantId: req.user!.tenantId,
+      userId: req.user!.id,
+    };
+
+    if (cursor) {
+      query.$or = [
+        { createdAt: { $lt: cursor.createdAt } },
+        {
+          createdAt: cursor.createdAt,
+          _id: { $lt: cursor._id },
+        },
+      ];
+    }
+
+    const items = await Wallet.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const hasMore = items.length > limit;
+    const sliced = hasMore ? items.slice(0, limit) : items;
+    const nextCursor = hasMore && sliced.length > 0 ? encodeCursor(sliced[sliced.length - 1]) : null;
+
+    // return a compact shape (no nested `data` wrapper)
+    return res.json({
+      success: true,
+      items: sliced.map(withWalletResponse),
+      hasMore,
+      nextCursor,
+      limit,
+    });
+  } catch (error: any) {
+    console.error('Compact list wallets error:', error);
+    return res.status(400).json({ success: false, message: error?.message || 'Failed to list wallets (compact)' });
+  }
+});
+
 router.get('/:walletId', async (req: AuthRequest, res: Response) => {
   try {
     const walletId = req.params.walletId;

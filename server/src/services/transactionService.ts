@@ -392,7 +392,7 @@ export async function createTransaction(
         },
       },
       {
-        new: true,
+        returnDocument: 'after',
         session,
       },
     );
@@ -526,7 +526,7 @@ export async function editTransaction(
         walletId,
       },
       { $set: update },
-      { new: true, session },
+      { returnDocument: 'after', session },
     );
 
     if (!editedTransaction) {
@@ -549,7 +549,7 @@ export async function editTransaction(
           },
         },
         {
-          new: true,
+          returnDocument: 'after',
           session,
         },
       );

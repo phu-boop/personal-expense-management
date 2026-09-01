@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { Plus, Search, ArrowUpRight, ArrowDownRight, X, Folder } from 'lucide-react';
+import { Plus, Search, ArrowUpRight, ArrowDownRight, X, Folder, Edit } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import api from '../api/api';
 import services from '../api/services';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
@@ -16,12 +15,15 @@ interface Wallet {
 interface Transaction {
   _id: string;
   type: 'INCOME' | 'EXPENSE';
-  amount: number;
+  // backend may return amount as string (decimal)
+  amount: string;
   category: string;
-  walletId: Wallet;
+  walletId: any;
   date: string;
   note?: string;
-  balanceAfter: number;
+  // server-derived balances are strings as well
+  balanceAfter?: string;
+  balanceBefore?: string;
 }
 
 const Transactions: React.FC = () => {
@@ -29,6 +31,7 @@ const Transactions: React.FC = () => {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [openingBalance, setOpeningBalance] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -40,6 +43,8 @@ const Transactions: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterWallet, setFilterWallet] = useState(paramWalletId);
   const [filterCategory, setFilterCategory] = useState('');
+  const [rangeFrom, setRangeFrom] = useState<string | null>(null);
+  const [rangeTo, setRangeTo] = useState<string | null>(null);
 
   const [txType, setTxType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [amount, setAmount] = useState('');
@@ -49,31 +54,83 @@ const Transactions: React.FC = () => {
   const [note, setNote] = useState('');
 
   const [submitError, setSubmitError] = useState('');
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingTxId(null);
+    setSubmitError('');
+  };
 
   const fetchData = async (append = false, cursor?: string | null) => {
     if (!append) setIsLoading(true);
     setIsLoadingMore(append);
 
     try {
-      const params = new URLSearchParams({ limit: '20' });
-      if (cursor) params.set('before', cursor);
-      if (filterWallet) params.set('walletId', filterWallet);
-      if (filterCategory) params.set('category', filterCategory);
+      const limit = '20';
+      const params: Record<string, any> = { limit };
+      if (rangeFrom) params.from = new Date(rangeFrom + 'T00:00:00Z').toISOString();
+      if (rangeTo) params.to = new Date(rangeTo + 'T00:00:00Z').toISOString();
+      if (cursor) params.cursor = cursor;
 
-      const [txRes, walletsRes] = await Promise.all([
-        services.transactions.listWithQueryString(params.toString()),
-        services.wallets.list()
-      ]);
+      // prefer compact wallet list for lightweight select options
+      const walletsRes = await services.wallets.compact();
+      const walletList = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.items ?? []);
 
-      const walletList = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.data ?? []);
-      const txList = Array.isArray(txRes.data?.data) ? txRes.data.data : [];
+      let combinedTxs: Transaction[] = [];
+      let nextC: string | null = null;
+      let more = false;
 
-      setTransactions(prev => append ? [...prev, ...txList] : txList);
-      setNextCursor(txRes.data?.nextCursor ?? null);
-      setHasMore(Boolean(txRes.data?.hasMore));
-      setWallets(walletList);
-      if (walletList.length > 0 && !walletId) {
-        setWalletId(walletList[0]._id);
+      if (filterWallet) {
+        // Use contract endpoint per-wallet
+        const res = await services.transactions.list(filterWallet, params as any);
+        const data = res.data;
+        const txList = Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data.data) ? data.data : []);
+        combinedTxs = txList;
+        nextC = data.nextCursor ?? null;
+        more = Boolean(data.hasMore);
+        // opening balance provided by contract
+        setOpeningBalance(data.openingBalance ?? null);
+      } else {
+        // No wallet filter: aggregate across wallets (mock behavior)
+        const fetches = walletList.map((w: any) =>
+          services.transactions.list(w._id, params as any).then((r: any) => ({ walletId: w._id, data: r.data })).catch(() => null)
+        );
+        const results = await Promise.all(fetches);
+        results.forEach((r: any) => {
+          if (!r || !r.data) return;
+          const txs = Array.isArray(r.data.transactions) ? r.data.transactions : (Array.isArray(r.data.data) ? r.data.data : []);
+          txs.forEach((t: Transaction) => combinedTxs.push(t));
+        });
+        // Sort and limit
+        combinedTxs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        combinedTxs = combinedTxs.slice(0, Number(limit));
+        nextC = null;
+        more = false;
+      }
+
+      // normalize transaction walletId to include wallet name for UI
+      const walletNameMap: Record<string, string> = {};
+      const minimal = walletList.map((w: any) => ({ _id: w._id, name: w.name }));
+      minimal.forEach(w => { walletNameMap[w._id] = w.name; });
+
+      const normalizedTxs = combinedTxs.map((tx: any) => {
+        const wid = typeof tx.walletId === 'string' ? tx.walletId : (tx.walletId?._id ?? tx.walletId);
+        return {
+          ...tx,
+          walletId: typeof wid === 'string' ? { _id: wid, name: walletNameMap[wid] ?? '' } : tx.walletId,
+        } as Transaction;
+      });
+
+      // sort newest -> oldest
+      normalizedTxs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setTransactions(prev => append ? [...prev, ...normalizedTxs] : normalizedTxs);
+      setNextCursor(nextC);
+      setHasMore(more);
+      setWallets(minimal);
+      if (minimal.length > 0 && !walletId) {
+        setWalletId(minimal[0]._id);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -84,6 +141,27 @@ const Transactions: React.FC = () => {
   };
 
   useEffect(() => {
+    // default date range: today -> tomorrow
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tyyyy = tomorrow.getFullYear();
+    const tmm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const tdd = String(tomorrow.getDate()).padStart(2, '0');
+    const tomorrowStr = `${tyyyy}-${tmm}-${tdd}`;
+
+    if (!rangeFrom && !rangeTo) {
+      setRangeFrom(todayStr);
+      setRangeTo(tomorrowStr);
+      // fetch with defaults
+      fetchData(false, null);
+      return;
+    }
+
     fetchData(false, null);
   }, []);
 
@@ -126,18 +204,34 @@ const Transactions: React.FC = () => {
         return;
       }
 
-      await services.transactions.create({
-        walletId,
+      if (!walletId) {
+        setSubmitError('Please select a wallet');
+        return;
+      }
+
+      const payload: any = {
+        amount: String(numericAmount),
         type: txType,
-        amount: numericAmount,
-        category,
-        date,
-        note
-      });
+        date: new Date(date).toISOString(),
+      };
+      if (note) payload.note = note;
+      // send category only if it looks like an ObjectId
+      if (/^[a-f0-9]{24}$/i.test(category)) payload.category = category;
+
+      if (editingTxId) {
+        // Edit existing transaction
+        await services.transactions.update(walletId, editingTxId, payload);
+        setEditingTxId(null);
+      } else {
+        // Create new
+        await services.transactions.create(walletId, payload);
+      }
+
       setIsModalOpen(false);
       setAmount('');
       setNote('');
-      fetchData(); // Refresh list
+      // refresh list
+      fetchData(false, null);
     } catch (error: any) {
       console.error('Failed to add transaction:', error);
       setSubmitError(error.response?.data?.message || 'Failed to add transaction');
@@ -170,8 +264,9 @@ const Transactions: React.FC = () => {
         grouped[dateKey] = { dateVal: txDate, transactions: [], totalIncome: 0, totalExpense: 0 };
       }
       grouped[dateKey].transactions.push(tx);
-      if (tx.type === 'INCOME') grouped[dateKey].totalIncome += tx.amount;
-      if (tx.type === 'EXPENSE') grouped[dateKey].totalExpense += tx.amount;
+      const amt = typeof tx.amount === 'string' ? Number(tx.amount) : Number(tx.amount || 0);
+      if (tx.type === 'INCOME') grouped[dateKey].totalIncome += amt;
+      if (tx.type === 'EXPENSE') grouped[dateKey].totalExpense += amt;
     });
 
     return Object.values(grouped).sort((a, b) => b.dateVal.getTime() - a.dateVal.getTime());
@@ -212,6 +307,12 @@ const Transactions: React.FC = () => {
       </header>
 
       <div className="card transaction-list-card">
+        {openingBalance !== null && (
+          <div className="opening-balance-card">
+            <strong>Opening Balance:</strong>
+            <span style={{ marginLeft: 8 }}>{Number(openingBalance).toLocaleString('vi-VN')} VND</span>
+          </div>
+        )}
         <div className="list-toolbar">
           <div className="search-box">
             <Search size={18} className="search-icon" />
@@ -231,6 +332,14 @@ const Transactions: React.FC = () => {
               placeholder="All Wallets"
               style={{ minWidth: '150px' }}
             />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>From</label>
+              <input type="date" value={rangeFrom ?? ''} onChange={(e) => setRangeFrom(e.target.value || null)} />
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>To</label>
+              <input type="date" value={rangeTo ?? ''} onChange={(e) => setRangeTo(e.target.value || null)} />
+              <button className="btn-secondary" onClick={() => fetchData(false, null)}>Apply</button>
+              <button className="btn-secondary" onClick={() => { setRangeFrom(null); setRangeTo(null); fetchData(false, null); }}>Clear</button>
+            </div>
             <CustomSelect
               value={filterCategory}
               onChange={setFilterCategory}
@@ -293,8 +402,25 @@ const Transactions: React.FC = () => {
                           <div className="tx-note">{tx.note ? `${tx.note} • ` : ''}{tx.walletId?.name}</div>
                         </div>
                         <div className="tx-meta">
-                          <div className={`tx-amount ${tx.type.toLowerCase()}`}>
-                            {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('vi-VN')} VND
+                          <div className="tx-balances">
+                            <div className="tx-balance-before">{Number(tx.balanceBefore ?? tx.balanceBefore).toLocaleString('vi-VN')} VND</div>
+                            <div className={`tx-amount ${tx.type.toLowerCase()}`}>{tx.type === 'INCOME' ? '+' : '-'}{(typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount).toLocaleString('vi-VN')} VND</div>
+                            <div className="tx-balance-after">{Number(tx.balanceAfter ?? tx.balanceAfter).toLocaleString('vi-VN')} VND</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <button className="icon-btn edit-tx-btn" title="Edit" onClick={() => {
+                              // open modal in edit mode
+                              setEditingTxId(tx._id);
+                              setIsModalOpen(true);
+                              setTxType(tx.type);
+                              setAmount((typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount).toLocaleString('vi-VN'));
+                              setWalletId(tx.walletId?._id || '');
+                              setCategory(tx.category || '');
+                              setDate(new Date(tx.date).toISOString().split('T')[0]);
+                              setNote(tx.note || '');
+                            }}>
+                              <Edit size={16} />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -324,8 +450,8 @@ const Transactions: React.FC = () => {
         <div className="drawer-overlay" onClick={(e) => { if (e.target === e.currentTarget) setIsModalOpen(false); }}>
           <div className="drawer-content">
             <div className="drawer-header">
-              <h2>Add Transaction</h2>
-              <button className="icon-btn" onClick={() => setIsModalOpen(false)}>
+              <h2>{editingTxId ? 'Edit Transaction' : 'Add Transaction'}</h2>
+              <button className="icon-btn" onClick={closeModal}>
                 <X size={24} />
               </button>
             </div>
@@ -401,9 +527,9 @@ const Transactions: React.FC = () => {
               </div>
 
               <div className="drawer-footer">
-                <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                 <button type="submit" className={`btn-primary ${txType.toLowerCase()}-btn`}>
-                  Add {txType === 'INCOME' ? 'Income' : 'Expense'}
+                  {editingTxId ? `Save ${txType === 'INCOME' ? 'Income' : 'Expense'}` : `Add ${txType === 'INCOME' ? 'Income' : 'Expense'}`}
                 </button>
               </div>
             </form>

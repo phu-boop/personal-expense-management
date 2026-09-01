@@ -61,18 +61,18 @@ const Statement: React.FC = () => {
   const fetchStatement = async () => {
     setIsLoading(true);
     try {
-      const [walletsRes, statementRes] = await Promise.all([
-        services.wallets.list(),
-        services.transactions.statement({ walletId: walletId || undefined, startDate, endDate }),
-      ]);
+      const walletsRes = await services.wallets.list();
+      const statementRes = await services.transactions.list(walletId || '', { from: startDate, to: endDate, limit: 100 } as any);
 
       const walletList = Array.isArray(walletsRes.data)
         ? walletsRes.data
         : Array.isArray(walletsRes.data?.data)
           ? walletsRes.data.data
-          : [];
+          : Array.isArray(walletsRes.data?.items)
+            ? walletsRes.data.items
+            : [];
 
-      setWallets(walletList);
+      setWallets(walletList.map((w: any) => services.normalizeWallet(w)));
       setSummary(statementRes.data.summary ?? {
         openingBalance: 0,
         totalIncome: 0,

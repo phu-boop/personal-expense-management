@@ -20,7 +20,11 @@ const Wallets: React.FC = () => {
   const navigate = useNavigate();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  // cursor pagination state
+  const [cursorStack, setCursorStack] = useState<(string | null)[]>([]);
+  const [currentCursor, setCurrentCursor] = useState<string | null>(null);
+  const [nextCursorValue, setNextCursorValue] = useState<string | null>(null);
+  const [hasMorePages, setHasMorePages] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -30,16 +34,36 @@ const Wallets: React.FC = () => {
   const [accountNumber, setAccountNumber] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
 
-  const fetchWallets = async (nextPage = page) => {
+  const fetchWallets = async (cursor?: string | null) => {
     setIsLoading(true);
     try {
-      const res = await services.wallets.list({ page: nextPage, limit: PAGE_SIZE });
-      const walletList = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
-      const nextTotalPages = Math.max(1, Number(res.data?.totalPages ?? 1));
+      const params: any = { limit: PAGE_SIZE };
+      if (cursor) params.cursor = cursor;
+      let res = await services.wallets.list(params);
+      if (!res?.data || (res.status === 304 && (!res.data || Object.keys(res.data).length === 0))) {
+        res = await services.wallets.list(params, { headers: { 'Cache-Control': 'no-cache' } });
+      }
+      // normalize various response shapes: [] | { data: [] } | { wallets: [] }
+      let walletList: any[] = [];
+      if (Array.isArray(res.data)) walletList = res.data;
+      else if (Array.isArray(res.data?.data)) walletList = res.data.data;
+      else if (Array.isArray(res.data?.data?.items)) walletList = res.data.data.items;
+      else if (Array.isArray(res.data?.data?.wallets)) walletList = res.data.data.wallets;
+      else if (Array.isArray(res.data?.wallets)) walletList = res.data.wallets;
+      else if (Array.isArray(res.data?.items)) walletList = res.data.items;
+      else walletList = [];
 
-      setWallets(walletList);
-      setTotalPages(nextTotalPages);
-      setPage(Number(res.data?.page ?? nextPage));
+      // normalize wallet objects (decimal shapes etc.)
+      const normalized = walletList.map((w: any) => services.normalizeWallet(w));
+      console.debug('[Wallets] fetched', { raw: res.data, count: walletList.length, normalizedCount: normalized.length });
+      setWallets(normalized);
+
+      // cursor pagination meta
+      const hasMore = Boolean(res.data?.hasMore ?? res.data?.data?.hasMore ?? false);
+      const nextCursor = res.data?.nextCursor ?? res.data?.data?.nextCursor ?? null;
+      setHasMorePages(hasMore);
+      setNextCursorValue(nextCursor ?? null);
+      setCurrentCursor(cursor ?? null);
     } catch (error) {
       console.error('Failed to fetch wallets:', error);
     } finally {
@@ -48,8 +72,10 @@ const Wallets: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchWallets(page);
-  }, [page]);
+    fetchWallets(null);
+  }, []);
+
+  const resolvedNextCursor = () => nextCursorValue;
 
   const toggleWalletVisibility = (id: string) => {
     setVisibleWalletBalances(prev => ({
@@ -74,14 +100,18 @@ const Wallets: React.FC = () => {
       await services.wallets.create({
         name,
         accountNumber,
-        initialBalance: Number(initialBalance.replace(/\D/g, '')) || 0,
+        // send initialBalance as string per API contract
+        initialBalance: String(Number(initialBalance.replace(/\D/g, '')) || 0),
         startDate: new Date().toISOString()
       });
       setIsModalOpen(false);
       setName('');
       setAccountNumber('');
       setInitialBalance('');
-      fetchWallets();
+      // reset pagination and refresh first page
+      setCursorStack([]);
+      setCurrentCursor(null);
+      fetchWallets(null);
     } catch (error) {
       console.error('Failed to create wallet:', error);
       alert('Failed to create wallet. Please check your inputs.');
@@ -180,19 +210,29 @@ const Wallets: React.FC = () => {
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={page <= 1 || isLoading}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={cursorStack.length === 0 || isLoading}
+                onClick={() => {
+                  // go back: pop last cursor and refetch previous page
+                  const prev = cursorStack.slice(0, -1);
+                  setCursorStack(prev);
+                  const lastCursor = prev.length > 0 ? prev[prev.length - 1] : null;
+                  fetchWallets(lastCursor);
+                }}
               >
                 Previous
               </button>
-              <span className="pagination-text">
-                Page {page} / {totalPages}
-              </span>
+              <span className="pagination-text">Cursor pagination</span>
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={page >= totalPages || isLoading}
-                onClick={() => setPage((prev) => prev + 1)}
+                disabled={!hasMorePages || isLoading}
+                onClick={() => {
+                  const next = resolvedNextCursor();
+                  if (!next) return;
+                  // push current cursor onto stack so we can go back
+                  setCursorStack(prev => [...prev, currentCursor]);
+                  fetchWallets(next);
+                }}
               >
                 Next
               </button>

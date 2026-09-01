@@ -4,7 +4,7 @@ Tài liệu này mô tả contract API cho transaction domain đã triển khai 
 
 ## Base path
 
-- `/api/wallets`
+-   
 
 ## Auth
 

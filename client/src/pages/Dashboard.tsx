@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/api';
+import services from '../api/services';
 import './dashboard.css';
 
 const COLORS = ['#14A800', '#3b82f6', '#6366f1', '#8b5cf6', '#64748b', '#94a3b8'];
@@ -80,31 +81,38 @@ const Dashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       setIsLoading(true);
       try {
-        const [walletsRes, txRes, insightsRes] = await Promise.all([
-          api.get('/api/wallets'),
-          api.get('/api/transactions?limit=5'),
-          api.get('/api/transactions/insights')
-        ]);
-
-        const walletsData = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.data ?? []);
-        setWallets(walletsData);
-        setActiveWallets(walletsData.length);
-        setTotalBalance(walletsData.reduce((acc: number, w: any) => acc + w.currentBalance, 0));
+        const walletsRes = await services.wallets.list();
+        const walletsData = Array.isArray(walletsRes.data)
+          ? walletsRes.data
+          : Array.isArray(walletsRes.data?.data)
+            ? walletsRes.data.data
+            : Array.isArray(walletsRes.data?.items)
+              ? walletsRes.data.items
+              : [];
+        const normalized = walletsData.map((w: any) => services.normalizeWallet(w));
+        setWallets(normalized);
+        setActiveWallets(normalized.length);
+        setTotalBalance(normalized.reduce((acc: number, w: any) => acc + (w.currentBalance || 0), 0));
         // initialize per-wallet visibility (default: visible)
         const visMap: Record<string, boolean> = {};
-        walletsData.forEach((w: any) => { visMap[w._id] = true; });
+        normalized.forEach((w: any) => { visMap[w._id] = true; });
         setWalletVisibility(visMap);
 
-        setRecentTransactions(txRes.data.data);
+        // recent transactions: aggregate per-wallet (mock) using services.mock
+        try {
+          const recent = await services.mock.recentAcrossWallets(5);
+          setRecentTransactions(Array.isArray(recent) ? recent : []);
+        } catch (err) {
+          console.error('Failed to fetch recent transactions (mock):', err);
+          setRecentTransactions([]);
+        }
 
-        const { monthlyChart, categoryChart, insightMessage } = insightsRes.data;
-        setMonthlyChart(monthlyChart);
-        setCategoryChart(categoryChart);
-        setInsightMessage(insightMessage);
-
-        const currentMonthData = monthlyChart.length > 0 ? monthlyChart[monthlyChart.length - 1] : { Income: 0, Expense: 0 };
-        setIncome(currentMonthData.Income || 0);
-        setExpense(currentMonthData.Expense || 0);
+        // Backend contract doesn't expose insights endpoint; keep charts empty
+        setMonthlyChart([]);
+        setCategoryChart([]);
+        setInsightMessage('');
+        setIncome(0);
+        setExpense(0);
 
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
