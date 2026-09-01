@@ -4,6 +4,7 @@ import Decimal from 'decimal.js';
 import Transaction, { ITransaction, TransactionType } from '../models/Transaction';
 import Wallet from '../models/Wallet';
 import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
+import orderingUtils from '../utils/ordering';
 import { toDecimal, toDecimal128 } from '../utils/money';
 import { getTransactionEffect } from '../utils/transactionEffect';
 
@@ -289,28 +290,33 @@ const invalidateAffectedSnapshots = async ({
     return;
   }
 
-  const earliestAffected = compareSnapshotCheckpoint(
-    {
-      date: oldDate,
-      createdAt,
-      id: transactionId,
-    },
-    {
-      date: newDate,
-      createdAt,
-      id: transactionId,
-    },
-  ) <= 0
-    ? {
-      date: oldDate,
-      createdAt,
-      id: transactionId,
-    }
-    : {
-      date: newDate,
-      createdAt,
-      id: transactionId,
-    };
+  const minOrdering = orderingUtils.isBefore(
+    { date: oldDate, createdAt, _id: transactionId },
+    { date: newDate, createdAt, _id: transactionId },
+  )
+    ? { date: oldDate, createdAt, _id: transactionId }
+    : { date: newDate, createdAt, _id: transactionId };
+
+  const ord = minOrdering;
+
+  const atOrAfterForSnapshot = {
+    $or: [
+      { lastTransactionDate: { $gt: new Date(ord.date) } },
+      {
+        $and: [
+          { lastTransactionDate: { $eq: new Date(ord.date) } },
+          { lastTransactionCreatedAt: { $gt: new Date(ord.createdAt ?? 0) } },
+        ],
+      },
+      {
+        $and: [
+          { lastTransactionDate: { $eq: new Date(ord.date) } },
+          { lastTransactionCreatedAt: { $eq: new Date(ord.createdAt ?? 0) } },
+          { lastTransactionId: { $gte: ord._id } },
+        ],
+      },
+    ],
+  };
 
   await BalanceSnapshot.updateMany(
     {
@@ -322,18 +328,7 @@ const invalidateAffectedSnapshots = async ({
         { lastTransactionCreatedAt: { $exists: true } },
         { lastTransactionId: { $exists: true } },
       ],
-      $or: [
-        { lastTransactionDate: { $gt: earliestAffected.date } },
-        {
-          lastTransactionDate: earliestAffected.date,
-          lastTransactionCreatedAt: { $gt: earliestAffected.createdAt },
-        },
-        {
-          lastTransactionDate: earliestAffected.date,
-          lastTransactionCreatedAt: earliestAffected.createdAt,
-          lastTransactionId: { $gte: earliestAffected.id },
-        },
-      ],
+      ...atOrAfterForSnapshot,
     },
     {
       $set: {
@@ -413,9 +408,42 @@ export async function createTransaction(
         note: note?.trim() || undefined,
       },
     ], { session });
-
     return transaction as ITransaction;
   });
+}
+
+export async function createTransactionWithInvalidation(
+  input: CreateTransactionInput,
+): Promise<ITransaction> {
+  const tx = await createTransaction(input);
+
+  // Invalidate snapshots at-or-after the new transaction ordering
+  await invalidateAffectedSnapshots({
+    tenantId: tx.tenantId as mongoose.Types.ObjectId,
+    walletId: tx.walletId as mongoose.Types.ObjectId,
+    oldDate: tx.date,
+    newDate: tx.date,
+    createdAt: tx.createdAt,
+    transactionId: tx._id,
+    session: undefined,
+    mutationType: 'EFFECT_CHANGE',
+  });
+
+  // best-effort enqueue snapshot check after commit
+  enqueueSnapshotJob(tx.walletId as mongoose.Types.ObjectId, tx.tenantId as mongoose.Types.ObjectId).catch(() => {});
+
+  return tx;
+}
+
+// Enqueue snapshot job after commit (best-effort, non-blocking)
+async function enqueueSnapshotJob(walletId: mongoose.Types.ObjectId, tenantId?: mongoose.Types.ObjectId) {
+  try {
+    const { createRedisQueueFromEnvironment } = await import('./redisQueue');
+    const queue = await createRedisQueueFromEnvironment();
+    await queue.enqueue('snapshot-check', { walletId, tenantId });
+  } catch (err) {
+    console.warn('[transactionService] failed to enqueue snapshot-check job', err);
+  }
 }
 
 export async function editTransaction(
@@ -571,6 +599,10 @@ export async function editTransaction(
         mutationType,
       });
     }
+
+    // best-effort enqueue snapshot check after commit (non-blocking)
+    // do this outside the transaction by not passing session
+    enqueueSnapshotJob(wallet._id as mongoose.Types.ObjectId, tenantId as any).catch(() => {});
 
     return editedTransaction as ITransaction;
   });

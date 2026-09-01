@@ -6,6 +6,7 @@ import Transaction, { TransactionType } from '../models/Transaction';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import {
   createTransaction,
+  createTransactionWithInvalidation,
   editTransaction,
   InsufficientBalanceError,
   TransactionNotFoundError,
@@ -14,6 +15,8 @@ import {
 } from '../services/transactionService';
 import { toDecimal } from '../utils/money';
 import { getTransactionEffect } from '../utils/transactionEffect';
+import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
+import orderingUtils from '../utils/ordering';
 
 const router = express.Router();
 
@@ -131,7 +134,7 @@ router.post('/:walletId/transactions', async (req: AuthRequest, res: Response) =
       return res.status(400).json({ error: 'ValidationError', message: 'Invalid category' });
     }
 
-    const transaction = await createTransaction({
+    const transaction = await createTransactionWithInvalidation({
       tenantId: req.user!.tenantId!,
       userId: req.user!.id,
       walletId: new mongoose.Types.ObjectId(walletId),
@@ -267,30 +270,62 @@ router.get('/:walletId/transactions', async (req: AuthRequest, res: Response) =>
       .limit(limit + 1)
       .lean();
 
+    // Compute openingBalance using BalanceSnapshot fast-path
     let openingBalance = toDecimal(wallet.initialBalance);
-    const historicalQuery: any = {
+
+    // Determine the ordering of the first transaction in the page (or the page start)
+    const firstTransactionOrdering = transactions.length > 0
+      ? { date: transactions[0].date, createdAt: transactions[0].createdAt, _id: transactions[0]._id }
+      : boundary
+        ? { date: boundary.date, createdAt: boundary.createdAt, _id: boundary._id }
+        : { date: fromDate, createdAt: new Date(0), _id: new mongoose.Types.ObjectId('000000000000000000000000') };
+
+    // Find latest VALID snapshot strictly before firstTransactionOrdering
+    const snapshot = await BalanceSnapshot.findOne({
       tenantId: req.user!.tenantId,
-      userId: req.user!.id,
       walletId: new mongoose.Types.ObjectId(walletId),
-    };
+      status: BalanceSnapshotStatus.VALID,
+      $and: [
+        { lastTransactionDate: { $exists: true } },
+        { lastTransactionCreatedAt: { $exists: true } },
+        { lastTransactionId: { $exists: true } },
+      ],
+      $or: orderingUtils.buildBeforePredicate({ date: firstTransactionOrdering.date, createdAt: firstTransactionOrdering.createdAt, _id: firstTransactionOrdering._id }),
+    }).sort({ lastTransactionDate: -1, lastTransactionCreatedAt: -1, lastTransactionId: -1 }).lean();
 
-    if (boundary) {
-      historicalQuery.$or = [
-        { date: { $lt: boundary.date } },
-        { date: boundary.date, createdAt: { $lt: boundary.createdAt } },
-        { date: boundary.date, createdAt: boundary.createdAt, _id: { $lt: boundary._id } },
-      ];
+    if (snapshot) {
+      openingBalance = toDecimal(snapshot.balance);
+
+      // Sum transactions strictly after snapshot checkpoint and strictly before firstTransactionOrdering
+      const afterSnapOr = orderingUtils.buildAfterPredicate({ date: snapshot.lastTransactionDate!, createdAt: snapshot.lastTransactionCreatedAt!, _id: snapshot.lastTransactionId! });
+      const beforeFirstOr = orderingUtils.buildBeforePredicate({ date: firstTransactionOrdering.date, createdAt: firstTransactionOrdering.createdAt, _id: firstTransactionOrdering._id });
+
+      const betweenQuery: any = {
+        tenantId: req.user!.tenantId,
+        userId: req.user!.id,
+        walletId: new mongoose.Types.ObjectId(walletId),
+        $and: [ afterSnapOr, beforeFirstOr ],
+      };
+
+      const between = await Transaction.find(betweenQuery).sort({ date: 1, createdAt: 1, _id: 1 }).lean();
+      for (const t of between) {
+        const effect = getTransactionEffect(toDecimal(t.amount), t.type as TransactionType);
+        openingBalance = openingBalance.plus(effect);
+      }
     } else {
-      historicalQuery.date = { $lt: fromDate };
-    }
+      // No snapshot found — aggregate all transactions before firstTransactionOrdering
+      const histQuery: any = {
+        tenantId: req.user!.tenantId,
+        userId: req.user!.id,
+        walletId: new mongoose.Types.ObjectId(walletId),
+        $or: orderingUtils.buildBeforePredicate({ date: firstTransactionOrdering.date, createdAt: firstTransactionOrdering.createdAt, _id: firstTransactionOrdering._id }),
+      };
 
-    const historical = await Transaction.find(historicalQuery)
-      .sort({ date: 1, createdAt: 1, _id: 1 })
-      .lean();
-
-    for (const transaction of historical) {
-      const effect = getTransactionEffect(toDecimal(transaction.amount), transaction.type as TransactionType);
-      openingBalance = openingBalance.plus(effect);
+      const historical = await Transaction.find(histQuery).sort({ date: 1, createdAt: 1, _id: 1 }).lean();
+      for (const transaction of historical) {
+        const effect = getTransactionEffect(toDecimal(transaction.amount), transaction.type as TransactionType);
+        openingBalance = openingBalance.plus(effect);
+      }
     }
 
     const pageItems = transactions.slice(0, limit);
