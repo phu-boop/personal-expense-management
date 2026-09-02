@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 
 import { authenticate } from '../middleware/auth';
 import { createWallet, listWallets, listWalletsCompact, getWallet } from '../controllers/walletController';
-import { AuthRequest } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -53,8 +52,9 @@ const decodeCursor = (cursor?: string): Cursor | undefined => {
   }
 };
 
-const encodeCursor = (wallet: { createdAt: Date; _id: mongoose.Types.ObjectId }) =>
-  Buffer.from(JSON.stringify({ createdAt: wallet.createdAt.toISOString(), _id: wallet._id.toString() })).toString('base64');
+
+
+// encodeCursor intentionally omitted here; use the service-layer implementation in `walletService`
 
 router.use(authenticate);
 

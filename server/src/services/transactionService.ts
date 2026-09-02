@@ -267,6 +267,7 @@ const getMutationType = ({
   return 'EFFECT_AND_ORDERING_CHANGE';
 };
 
+
 const invalidateAffectedSnapshots = async ({
   tenantId,
   walletId,
@@ -607,3 +608,5 @@ export async function editTransaction(
     return editedTransaction as ITransaction;
   });
 }
+
+export { listTransactions } from './transactionService.list';
