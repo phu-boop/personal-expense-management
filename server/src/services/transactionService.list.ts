@@ -156,3 +156,4 @@ export const listTransactions = async ({ tenantId, userId, walletId, limit, curs
 
   return { openingBalance: openingBalance.toString(), transactions: result, nextCursor, hasMore, limit };
 };
+

@@ -11,6 +11,7 @@ import './models/ExportJob';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
 import transactionRoutes from './routes/transaction';
+import statementRoutes from './routes/statement';
 import config from './config';
 
 const app = express();
@@ -27,6 +28,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/wallets', transactionRoutes);
+app.use('/api/wallets', statementRoutes);
 
 const startServer = async () => {
   try {

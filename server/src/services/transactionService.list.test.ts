@@ -447,5 +447,6 @@ describe('transactionService.list - openingBalance with snapshots', () => {
     assert.equal(res.transactions[0].balanceBefore !== undefined, true);
     assert.equal(res.transactions[0].balanceAfter !== undefined, true);
   });
+  
 
 });
