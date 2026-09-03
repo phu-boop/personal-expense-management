@@ -46,7 +46,7 @@ export async function getExport(req: any, res: Response) {
     const userId = req.user?.id?.toString();
     if (String(job.tenantId) !== String(tenantId) || String(job.userId) !== String(userId)) return res.status(403).json({ message: 'forbidden' });
 
-    return res.json({ job });
+    return res.json(job);
   } catch (err: any) {
     console.error('Get export job error', err);
     return res.status(500).json({ message: err?.message || 'failed' });

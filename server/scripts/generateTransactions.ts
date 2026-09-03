@@ -14,8 +14,8 @@ const walletIds = [
   '6a9950784816e1a84c6b1f87',
 ];
 
-const TOTAL = 250_000; // 1 million
-const BATCH_SIZE = 1000; // insert many per batch
+const TOTAL = 2_000_000; // target transactions to generate
+const BATCH_SIZE = 5000; // insert many per batch (tune for memory/perf)
 
 function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -85,10 +85,10 @@ async function main() {
 
         const effect = type === 'INCOME' ? amountDec : amountDec.negated();
 
-        // Generate date distributed over past 365 days
-        const now = Date.now();
-        const daysBack = Math.floor(Math.random() * 365);
-        const date = new Date(now - daysBack * 24 * 60 * 60 * 1000);
+        // Generate a timestamp within the target day (2026-09-02) with random time
+        const targetDayStart = new Date('2026-09-02T00:00:00.000Z').getTime();
+        const msIntoDay = Math.floor(Math.random() * 24 * 60 * 60 * 1000);
+        const date = new Date(targetDayStart + msIntoDay);
 
         const doc = {
           tenantId: tenantId,
@@ -98,8 +98,8 @@ async function main() {
           type,
           date,
           note: 'bulk-generated',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: date,
+          updatedAt: date,
         };
 
         batch.push(doc);
