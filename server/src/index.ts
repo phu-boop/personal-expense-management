@@ -12,6 +12,7 @@ import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
 import transactionRoutes from './routes/transaction';
 import statementRoutes from './routes/statement';
+import exportRoutes from './routes/export';
 import config from './config';
 
 const app = express();
@@ -29,6 +30,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/wallets', transactionRoutes);
 app.use('/api/wallets', statementRoutes);
+app.use('/api/exports', exportRoutes);
 
 const startServer = async () => {
   try {

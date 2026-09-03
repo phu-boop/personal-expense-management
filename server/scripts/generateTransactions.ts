@@ -8,13 +8,13 @@ import Wallet from '../src/models/Wallet';
 import Transaction from '../src/models/Transaction';
 
 const walletIds = [
-  '6a96a6c047053af5af4bd2dd',
-  '6a96a6d847053af5af4bd2de',
-  '6a96a6e147053af5af4bd2df',
-  '6a96a6eb47053af5af4bd2e0',
+  '6a99505a4816e1a84c6b1f84',
+  '6a9950614816e1a84c6b1f85',
+  '6a9950694816e1a84c6b1f86',
+  '6a9950784816e1a84c6b1f87',
 ];
 
-const TOTAL = 1_000_000; // 1 million
+const TOTAL = 250_000; // 1 million
 const BATCH_SIZE = 1000; // insert many per batch
 
 function randInt(min: number, max: number) {

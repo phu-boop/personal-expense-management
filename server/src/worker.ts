@@ -2,10 +2,8 @@ import mongoose from 'mongoose';
 import ExportJob, { ExportJobStatus } from './models/ExportJob';
 import Transaction, { TransactionType } from './models/Transaction';
 import Wallet from './models/Wallet';
-import { buildExportTransactionFilter } from './services/exportJobService';
-import { calculateStatementSummary } from './services/statementSummaryService';
-import { createStatementPdfBuffer, createStatementXlsxBuffer } from './services/exportDocumentService';
-import { generateAndSaveExport } from './services/exportProcessorService';
+import exportProcessorService from './services/exportProcessorService';
+import LocalFilesystemStorage from './services/storage/LocalFilesystemStorage';
 import { createRedisQueueFromEnvironment } from './services/redisQueue';
 import { createWorkerMetrics } from './services/workerMetrics';
 import fs from 'node:fs/promises';
@@ -35,15 +33,15 @@ const processExportJob = async (jobId: string, queue: Awaited<ReturnType<typeof 
     return true;
   }
 
-  mongoJob.status = ExportJobStatus.PROCESSING;
+  mongoJob.status = ExportJobStatus.IN_PROGRESS;
   await mongoJob.save();
   console.log('[worker] processing export job', { jobId, format: mongoJob.format, tenantId: String(mongoJob.tenantId), userId: String(mongoJob.userId) });
 
   const startedAt = Date.now();
 
   try {
-    const resultPath = await generateAndSaveExport(mongoJob);
-    console.log('[worker] export job completed', { jobId, resultPath });
+    await exportProcessorService({ jobId: mongoJob._id, storage: new LocalFilesystemStorage() });
+    console.log('[worker] export job completed', { jobId });
     workerMetrics.recordJobProcessed(Date.now() - startedAt);
     return true;
   } catch (error) {
@@ -101,7 +99,7 @@ const processNextJob = async (queue: Awaited<ReturnType<typeof createRedisQueueF
     return true;
   }
 
-  if (mongoJob.status === ExportJobStatus.PROCESSING || mongoJob.status === ExportJobStatus.COMPLETED) {
+  if (mongoJob.status === ExportJobStatus.IN_PROGRESS || mongoJob.status === ExportJobStatus.COMPLETED) {
     console.log('[worker] skipping already-processed job', { jobId, status: mongoJob.status });
     return true;
   }

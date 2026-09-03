@@ -168,15 +168,23 @@ export async function createRedisQueueFromEnvironment(redisUrl = config.REDIS_UR
     console.error('Redis queue error:', error);
   });
   await redisClient.connect();
-  return createRedisQueueClient({
+  // Only expose atomic helpers when the underlying client actually implements them.
+  const clientWrapper: any = {
     lPush: async (key: string, value: string) => redisClient.lPush(key, value),
     rPop: async (key: string) => redisClient.rPop(key),
-    // support atomic claim via RPOPLPUSH if available
-    rPopLPush: async (source: string, dest: string) => (redisClient as any).rPopLPush ? (redisClient as any).rPopLPush(source, dest) : null,
-    lRem: async (key: string, count: number, value: string) => (redisClient as any).lRem ? (redisClient as any).lRem(key, count, value) : null,
     lLen: async (key: string) => redisClient.lLen(key),
     lRange: async (key: string, start: number, end: number) => redisClient.lRange(key, start, end),
-  });
+  };
+
+  if (typeof (redisClient as any).rPopLPush === 'function') {
+    clientWrapper.rPopLPush = async (source: string, dest: string) => (redisClient as any).rPopLPush(source, dest);
+  }
+
+  if (typeof (redisClient as any).lRem === 'function') {
+    clientWrapper.lRem = async (key: string, count: number, value: string) => (redisClient as any).lRem(key, count, value);
+  }
+
+  return createRedisQueueClient(clientWrapper);
 }
 
 export async function createRedisQueueFromExistingClient(client: any) {

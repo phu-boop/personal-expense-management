@@ -58,30 +58,93 @@ const Statement: React.FC = () => {
   const [startDate, setStartDate] = useState<string>(defaultStartDate);
   const [endDate, setEndDate] = useState<string>(defaultEndDate);
 
-  const fetchStatement = async () => {
+  // Split fetching flows for clearer logs and debugging
+  const findFirstArray = (obj: any, depth = 3): any[] | null => {
+    if (!obj || depth < 0) return null;
+    if (Array.isArray(obj)) return obj;
+    if (typeof obj !== 'object') return null;
+    for (const k of Object.keys(obj)) {
+      try {
+        const v = (obj as any)[k];
+        if (Array.isArray(v)) return v;
+        if (typeof v === 'object') {
+          const found = findFirstArray(v, depth - 1);
+          if (found) return found;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return null;
+  };
+
+  const fetchWallets = async () => {
+    console.debug('fetchWallets: start');
+    try {
+      const walletsRes = await services.wallets.compact();
+      console.debug('fetchWallets: raw', walletsRes);
+      const resp = walletsRes?.data ?? walletsRes;
+      const walletList = findFirstArray(resp) || [];
+      console.debug('fetchWallets: parsed length', walletList.length, walletList[0] ?? null);
+      setWallets(walletList.map((w: any) => services.normalizeWallet(w)));
+      return walletList;
+    } catch (err) {
+      console.error('fetchWallets error', err);
+      setWallets([]);
+      return [] as any[];
+    }
+  };
+
+  const fetchStatementForWallet = async (wid?: string) => {
+    console.debug('fetchStatementForWallet: start', { walletId: wid });
+    try {
+      const statementRes = await services.statement.get(wid || '', { from: startDate, to: endDate } as any);
+      console.debug('fetchStatementForWallet: raw', statementRes);
+      // Normalize summary values (server returns decimal strings)
+      const rawSummary = statementRes.data?.summary ?? { openingBalance: '0', totalIncome: '0', totalExpense: '0', closingBalance: '0' };
+      setSummary({
+        openingBalance: Number(String(rawSummary.openingBalance ?? 0)),
+        totalIncome: Number(String(rawSummary.totalIncome ?? 0)),
+        totalExpense: Number(String(rawSummary.totalExpense ?? 0)),
+        closingBalance: Number(String(rawSummary.closingBalance ?? 0)),
+      });
+
+      // Map transactions into frontend-friendly types. Server may return Decimal128, ObjectId, or string values.
+      const rawTx = Array.isArray(statementRes.data?.transactions) ? statementRes.data.transactions : [];
+      const mapped = rawTx.map((t: any) => ({
+        _id: String(t._id ?? t.id ?? ''),
+        type: t.type,
+        amount: Number(String(t.amount ?? 0)),
+        category: t.category ? String(t.category) : '',
+        date: t.date ? (typeof t.date === 'string' ? t.date : new Date(t.date).toISOString()) : '',
+        note: t.note ?? '',
+        balanceAfter: Number(String(t.balanceAfter ?? t.balance_after ?? 0)),
+      }));
+
+      setTransactions(mapped);
+      return statementRes;
+    } catch (err) {
+      console.error('fetchStatementForWallet error', err);
+      setSummary({ openingBalance: 0, totalIncome: 0, totalExpense: 0, closingBalance: 0 });
+      setTransactions([]);
+      return null;
+    }
+  };
+
+  const fetchAll = async () => {
     setIsLoading(true);
     try {
-      const walletsRes = await services.wallets.list();
-      const statementRes = await services.transactions.list(walletId || '', { from: startDate, to: endDate, limit: 100 } as any);
-
-      const walletList = Array.isArray(walletsRes.data)
-        ? walletsRes.data
-        : Array.isArray(walletsRes.data?.data)
-          ? walletsRes.data.data
-          : Array.isArray(walletsRes.data?.items)
-            ? walletsRes.data.items
-            : [];
-
-      setWallets(walletList.map((w: any) => services.normalizeWallet(w)));
-      setSummary(statementRes.data.summary ?? {
-        openingBalance: 0,
-        totalIncome: 0,
-        totalExpense: 0,
-        closingBalance: 0,
-      });
-      setTransactions(Array.isArray(statementRes.data.transactions) ? statementRes.data.transactions : []);
-    } catch (err) {
-      console.error('Failed to fetch statement:', err);
+      const walletList = await fetchWallets();
+      if (!walletId && walletList.length > 0) {
+        const firstId = String(walletList[0]._id ?? walletList[0].id ?? '');
+        if (firstId) {
+          console.debug('fetchAll: defaulting walletId to', firstId);
+          setWalletId(firstId);
+          await fetchStatementForWallet(firstId);
+          return;
+        }
+      }
+      await fetchStatementForWallet(walletId);
     } finally {
       setIsLoading(false);
     }
@@ -99,11 +162,11 @@ const Statement: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    fetchStatement();
+    fetchAll();
   }, [walletId, startDate, endDate]);
 
   const handleGenerate = () => {
-    fetchStatement();
+    fetchAll();
   };
 
   const addExportQueueTask = (fileName: string, step: string, progress: number): number => {
@@ -268,7 +331,7 @@ const Statement: React.FC = () => {
 
       <div className="card filters-card glass-panel animate-fade-in">
         <div className="filter-group">
-          <label>Wallet</label>
+          <label>Wallet {wallets.length > 0 ? `(${wallets.length})` : '(0)'}</label>
           <CustomSelect
             value={walletId}
             onChange={setWalletId}

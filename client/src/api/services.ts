@@ -41,6 +41,11 @@ export const transactions = {
   update: (walletId: string, transactionId: string, payload: any) => api.patch(`/api/wallets/${walletId}/transactions/${transactionId}`, payload),
 };
 
+export const statement = {
+  // GET /api/wallets/:walletId/statement?from=&to=
+  get: (walletId: string, params?: Record<string, any>) => api.get(`/api/wallets/${walletId}/statement`, { params }),
+};
+
 export const auth = {
   google: (payload: any) => api.post('/api/auth/google', payload),
 };
@@ -80,6 +85,7 @@ export const mock = {
 const defaultExport = {
   wallets,
   transactions,
+  statement,
   auth,
   exports: exportsApi,
   mock,

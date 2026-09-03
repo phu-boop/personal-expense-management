@@ -14,12 +14,9 @@ describe('transactionService', () => {
   let mongoServer: MongoMemoryServer;
 
   before(async () => {
-    mongoServer = await MongoMemoryServer.create({
-      replSet: {
-        count: 1,
-        storageEngine: 'wiredTiger',
-      },
-    });
+    // mongodb-memory-server typings differ; cast to any for test runtime options
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mongoServer = await MongoMemoryServer.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } } as any);
     process.env.MONGO_URI = mongoServer.getUri();
     await mongoose.connect(process.env.MONGO_URI!);
   });

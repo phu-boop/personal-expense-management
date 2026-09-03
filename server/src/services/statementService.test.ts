@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { before, beforeEach, after, afterEach, describe, it } from 'node:test';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import Transaction from '../models/Transaction';
+import Transaction, { TransactionType } from '../models/Transaction';
 import Wallet from '../models/Wallet';
 import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
 import StatementService from './statementService';
@@ -17,7 +17,9 @@ describe('StatementService', () => {
   let wallet: any;
 
   before(async () => {
-    mongoServer = await MongoMemoryServer.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
+    // cast to any for compatibility with mongodb-memory-server typings
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mongoServer = await MongoMemoryServer.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } } as any);
     process.env.MONGO_URI = mongoServer.getUri();
     await mongoose.connect(process.env.MONGO_URI!);
   });
@@ -42,9 +44,9 @@ describe('StatementService', () => {
 
   it('pagination continuity: page1 -> page2 balances continue', async () => {
     // Create three transactions in period so pagination with limit=1 yields multiple pages
-    await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('10'), type: 'INCOME', date: new Date('2026-09-03T01:00:00.000Z') });
-    await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('20'), type: 'INCOME', date: new Date('2026-09-03T02:00:00.000Z') });
-    await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('5'), type: 'EXPENSE', date: new Date('2026-09-03T03:00:00.000Z') });
+    await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('10'), type: TransactionType.INCOME, date: new Date('2026-09-03T01:00:00.000Z') });
+    await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('20'), type: TransactionType.INCOME, date: new Date('2026-09-03T02:00:00.000Z') });
+    await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('5'), type: TransactionType.EXPENSE, date: new Date('2026-09-03T03:00:00.000Z') });
 
     // Page 1
     const p1 = await StatementService.computeStatement({ tenantId, userId, walletId: wallet._id, from: new Date('2026-09-03T00:00:00.000Z'), to: new Date('2026-09-04T00:00:00.000Z'), limit: 1, cursor: null });
@@ -62,13 +64,13 @@ describe('StatementService', () => {
 
   it('basic statement: opening/closing/totals and boundaries', async () => {
     // T1 before from
-    const t1 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('10'), type: 'INCOME', date: new Date('2026-09-02T23:59:59.000Z') });
+    const t1 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('10'), type: TransactionType.INCOME, date: new Date('2026-09-02T23:59:59.000Z') });
     // T2 at from
-    const t2 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('5'), type: 'EXPENSE', date: new Date('2026-09-03T00:00:00.000Z') });
+    const t2 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('5'), type: TransactionType.EXPENSE, date: new Date('2026-09-03T00:00:00.000Z') });
     // T3 inside
-    const t3 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('20'), type: 'INCOME', date: new Date('2026-09-03T12:00:00.000Z') });
+    const t3 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('20'), type: TransactionType.INCOME, date: new Date('2026-09-03T12:00:00.000Z') });
     // T4 at to (excluded)
-    const t4 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('7'), type: 'EXPENSE', date: new Date('2026-09-04T00:00:00.000Z') });
+    const t4 = await Transaction.create({ tenantId, userId, walletId: wallet._id, amount: toDecimal128('7'), type: TransactionType.EXPENSE, date: new Date('2026-09-04T00:00:00.000Z') });
 
     const res = await StatementService.computeStatement({ tenantId, userId, walletId: wallet._id, from: new Date('2026-09-03T00:00:00.000Z'), to: new Date('2026-09-04T00:00:00.000Z'), limit: 10, cursor: null });
 

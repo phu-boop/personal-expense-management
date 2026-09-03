@@ -13,7 +13,10 @@ describe('transactionService.list - openingBalance with snapshots', () => {
   let mongoServer: MongoMemoryServer;
 
   before(async () => {
-    mongoServer = await MongoMemoryServer.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
+    // casting options to any because MongoMemoryServer types differ across versions
+    // and we only need to pass the underlying options at runtime for the test harness
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mongoServer = await MongoMemoryServer.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } } as any);
     process.env.MONGO_URI = mongoServer.getUri();
     await mongoose.connect(process.env.MONGO_URI!);
   });

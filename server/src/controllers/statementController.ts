@@ -6,7 +6,7 @@ import { parseDate } from '../validators/transactionValidator';
 export const getStatement = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId as mongoose.Types.ObjectId;
-    const userId = (req as any).user?._id as mongoose.Types.ObjectId;
+    const userId = (req as any).user?.id as mongoose.Types.ObjectId;
     const walletId = new mongoose.Types.ObjectId(req.params.walletId);
 
     const from = parseDate(req.query.from as string);
