@@ -13,6 +13,7 @@ export function normalizeQueuePayload(payload: any) {
   return {
     ...payload,
     retries: typeof payload.retries === 'number' ? payload.retries : 0,
+    enqueuedAt: payload?.enqueuedAt ?? new Date().toISOString(),
   };
 }
 
@@ -45,6 +46,81 @@ export function createRedisQueueClient(client: any) {
     const queue = readQueue(queueKey);
     queue.push(serialized);
     return normalizedPayload;
+  };
+
+  const buildProcessingKey = (queueName: string) => `${buildQueueKey(queueName)}:processing`;
+
+  const claim = async (queueName: string) => {
+    const queueKey = buildQueueKey(queueName);
+    const processingKey = buildProcessingKey(queueName);
+    const rPopLPush = getQueueMethod(client, ['rPopLPush', 'rpoplpush', 'brPopLPush', 'brpoplpush']);
+    if (typeof rPopLPush === 'function') {
+      const value = await rPopLPush(queueKey, processingKey);
+      if (!value) return null;
+      try { return { parsed: JSON.parse(value), raw: value }; } catch { return null; }
+    }
+    // fallback to in-memory: move from main queue to processing queue
+    const main = readQueue(queueKey);
+    const processing = readQueue(processingKey);
+    const value = main.shift();
+    if (!value) return null;
+    processing.push(value);
+    try { return { parsed: JSON.parse(value), raw: value }; } catch { return null; }
+  };
+
+  const ack = async (queueName: string, rawPayload: string) => {
+    const processingKey = buildProcessingKey(queueName);
+    const lRem = getQueueMethod(client, ['lRem', 'lrem']);
+    if (typeof lRem === 'function') {
+      // remove a single occurrence
+      await lRem(processingKey, 1, rawPayload);
+      return true;
+    }
+    const processing = readQueue(processingKey);
+    const idx = processing.indexOf(rawPayload);
+    if (idx >= 0) processing.splice(idx, 1);
+    return true;
+  };
+
+  const requeueStale = async (queueName: string, olderThanMs = 60_000) => {
+    const processingKey = buildProcessingKey(queueName);
+    const lRange = getQueueMethod(client, ['lRange', 'lrange']);
+    const lPush = getQueueMethod(client, ['lPush', 'lpush']);
+    const lRem = getQueueMethod(client, ['lRem', 'lrem']);
+    const now = Date.now();
+    if (typeof lRange === 'function' && typeof lPush === 'function' && typeof lRem === 'function') {
+      const values = await lRange(processingKey, 0, -1);
+      for (const v of values) {
+        try {
+          const p = JSON.parse(v);
+          const enqueued = Date.parse(p.enqueuedAt ?? 0);
+          if (Number.isNaN(enqueued) || now - enqueued > olderThanMs) {
+            // move back to main queue
+            await lPush(buildQueueKey(queueName), v);
+            await lRem(processingKey, 1, v);
+          }
+        } catch {
+          // ignore malformed
+        }
+      }
+      return;
+    }
+    // fallback: in-memory move based on parsed enqueuedAt
+    const processing = readQueue(processingKey);
+    const main = readQueue(buildQueueKey(queueName));
+    for (let i = processing.length - 1; i >= 0; i -= 1) {
+      const v = processing[i];
+      try {
+        const p = JSON.parse(v);
+        const enqueued = Date.parse(p.enqueuedAt ?? 0);
+        if (Number.isNaN(enqueued) || now - enqueued > olderThanMs) {
+          processing.splice(i, 1);
+          main.push(v);
+        }
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const enqueueDeadLetter = async (queueName: string, payload: any) => {
@@ -83,7 +159,7 @@ export function createRedisQueueClient(client: any) {
     return readQueue(queueKey).slice(start, end === -1 ? undefined : end + 1).map((v) => { try { return JSON.parse(v); } catch { return null; } }).filter(Boolean);
   };
 
-  return { enqueue, dequeue, length, peek, enqueueDeadLetter };
+  return { enqueue, dequeue, claim, ack, requeueStale, length, peek, enqueueDeadLetter };
 }
 
 export async function createRedisQueueFromEnvironment(redisUrl = config.REDIS_URL) {
@@ -95,6 +171,9 @@ export async function createRedisQueueFromEnvironment(redisUrl = config.REDIS_UR
   return createRedisQueueClient({
     lPush: async (key: string, value: string) => redisClient.lPush(key, value),
     rPop: async (key: string) => redisClient.rPop(key),
+    // support atomic claim via RPOPLPUSH if available
+    rPopLPush: async (source: string, dest: string) => (redisClient as any).rPopLPush ? (redisClient as any).rPopLPush(source, dest) : null,
+    lRem: async (key: string, count: number, value: string) => (redisClient as any).lRem ? (redisClient as any).lRem(key, count, value) : null,
     lLen: async (key: string) => redisClient.lLen(key),
     lRange: async (key: string, start: number, end: number) => redisClient.lRange(key, start, end),
   });
@@ -104,6 +183,8 @@ export async function createRedisQueueFromExistingClient(client: any) {
   return createRedisQueueClient({
     lPush: async (key: string, value: string) => client.lPush(key, value),
     rPop: async (key: string) => client.rPop(key),
+    rPopLPush: async (source: string, dest: string) => client.rPopLPush ? client.rPopLPush(source, dest) : null,
+    lRem: async (key: string, count: number, value: string) => client.lRem ? client.lRem(key, count, value) : null,
     lLen: async (key: string) => client.lLen(key),
     lRange: async (key: string, start: number, end: number) => client.lRange(key, start, end),
   });

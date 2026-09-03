@@ -62,7 +62,6 @@ export const listTransactions = async (req: AuthRequest, res: Response) => {
   const to = req.query.to ? validator.parseDate(req.query.to) : undefined;
 
   try {
-    const debug = Boolean(req.query.debug);
     const result = await txService.listTransactions({
       tenantId: req.user!.tenantId!,
       userId: req.user!.id,
@@ -71,7 +70,6 @@ export const listTransactions = async (req: AuthRequest, res: Response) => {
       cursor,
       from,
       to,
-      debug,
     });
 
     res.json(result);

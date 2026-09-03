@@ -10,7 +10,8 @@
     "benchmark:export": "tsx src/scripts/benchmark-export.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "worker:snapshot": "tsx src/consumers/snapshotConsumer.ts"
   },
   "keywords": [],
   "author": "",

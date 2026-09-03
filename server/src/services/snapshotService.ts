@@ -32,6 +32,9 @@ class SnapshotService {
       throw new Error('Wallet not found');
     }
 
+    // record start time to detect concurrent edits that happen while we aggregate
+    const startTime = new Date();
+
     // Build predicate for transactions <= checkpoint (inclusive)
     // orderingUtils.buildBeforePredicate is strictly before, so use OR with equality when needed.
     const beforePred = orderingUtils.buildBeforePredicate({
@@ -75,7 +78,7 @@ class SnapshotService {
       },
     ];
 
-    const res = await Transaction.aggregate(pipeline).exec();
+    const res = await Transaction.aggregate(pipeline).allowDiskUse(true).exec();
 
     const totalRaw = res?.[0]?.total ?? 0;
 
@@ -86,18 +89,57 @@ class SnapshotService {
     const balance = initial.plus(total);
 
     // Insert snapshot (append-only semantics)
-    const snapshot = new BalanceSnapshot({
-      tenantId: tenantId ?? wallet.tenantId,
+    // Before persisting, detect concurrent transaction edits that occurred while we were aggregating.
+    // If any transaction for this wallet was updated after we started, treat as transient so the consumer can retry.
+    const concurrentEditExists = await Transaction.exists({
       walletId: walletObjectId,
-      snapshotAt: new Date(),
-      balance: toDecimal128(balance),
+      ...(tenantId ? { tenantId } : {}),
+      updatedAt: { $gt: startTime },
+    });
+
+    if (concurrentEditExists) {
+      const err: any = new Error('transient: concurrent transaction modification detected');
+      err.name = 'TransientSnapshotCreationError';
+      throw err;
+    }
+    // Also detect concurrent snapshot invalidation or snapshot writes
+    const concurrentSnapshotChange = await BalanceSnapshot.exists({
+      walletId: walletObjectId,
+      ...(tenantId ? { tenantId } : {}),
+      updatedAt: { $gt: startTime },
+    });
+
+    if (concurrentSnapshotChange) {
+      const err: any = new Error('transient: concurrent snapshot modification detected');
+      err.name = 'TransientSnapshotCreationError';
+      throw err;
+    }
+
+    // Upsert a VALID snapshot for this exact checkpoint to make snapshot creation idempotent.
+    // Use $setOnInsert so concurrent creators race to insert only one document.
+    const filter: any = {
+      walletId: walletObjectId,
       lastTransactionDate: checkpoint.date,
       lastTransactionCreatedAt: checkpoint.createdAt,
       lastTransactionId: checkpoint.id,
       status: BalanceSnapshotStatus.VALID,
-    });
+    };
 
-    await snapshot.save();
+    const now = new Date();
+    const updateOnInsert = {
+      $setOnInsert: {
+        tenantId: tenantId ?? wallet.tenantId,
+        walletId: walletObjectId,
+        snapshotAt: now,
+        balance: toDecimal128(balance),
+        lastTransactionDate: checkpoint.date,
+        lastTransactionCreatedAt: checkpoint.createdAt,
+        lastTransactionId: checkpoint.id,
+        status: BalanceSnapshotStatus.VALID,
+      },
+    };
+
+    const snapshot = await BalanceSnapshot.findOneAndUpdate(filter, updateOnInsert, { upsert: true, returnDocument: 'after' }).lean();
 
     // Enqueue snapshot cleanup/metric job (best-effort) — not the main worker trigger
     try {
