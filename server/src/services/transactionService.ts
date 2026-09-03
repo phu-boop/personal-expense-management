@@ -584,6 +584,28 @@ export async function editTransaction(
       );
 
       if (!updatedWallet) {
+        // If we're running without a session (no transactions supported / fallback),
+        // the transaction document may have been updated already. Attempt to revert
+        // the transaction to its previous values to avoid leaving inconsistent state
+        // where the transaction change is applied but the wallet update failed.
+        if (!session) {
+          try {
+            await Transaction.findOneAndUpdate(
+              { _id: transactionObjectId, tenantId, userId, walletId },
+              {
+                $set: {
+                  amount: toDecimal128(oldAmount),
+                  type: oldType,
+                  date: oldDate,
+                  note: oldNote,
+                },
+              },
+            );
+          } catch (err) {
+            // best-effort revert; if revert fails, surface original conflict error
+          }
+        }
+
         throw new WalletVersionConflictError();
       }
     }
