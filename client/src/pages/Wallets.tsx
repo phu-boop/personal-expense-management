@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { Plus, CreditCard, X, Eye, EyeOff, BarChart3, PlusCircle, ListFilter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/api';
 import services from '../api/services';
 import './wallets.css';
 
@@ -19,7 +18,6 @@ const PAGE_SIZE = 20;
 const Wallets: React.FC = () => {
   const navigate = useNavigate();
   const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [page, setPage] = useState(1);
   // cursor pagination state
   const [cursorStack, setCursorStack] = useState<(string | null)[]>([]);
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);

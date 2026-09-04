@@ -111,8 +111,8 @@ const Transactions: React.FC = () => {
 
       // normalize transaction walletId to include wallet name for UI
       const walletNameMap: Record<string, string> = {};
-      const minimal = walletList.map((w: any) => ({ _id: w._id, name: w.name }));
-      minimal.forEach(w => { walletNameMap[w._id] = w.name; });
+      const minimal: Array<{ _id: string; name: string }> = walletList.map((w: any) => ({ _id: w._id, name: w.name }));
+      minimal.forEach((w: { _id: string; name: string }) => { walletNameMap[w._id] = w.name; });
 
       const normalizedTxs = combinedTxs.map((tx: any) => {
         const wid = typeof tx.walletId === 'string' ? tx.walletId : (tx.walletId?._id ?? tx.walletId);

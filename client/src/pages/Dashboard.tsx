@@ -66,6 +66,18 @@ const Dashboard: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
 
+  const toNumber = (value: unknown) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const prettifyMonth = (monthKey: string) => {
+    if (!monthKey) return 'Month';
+    const [year, month] = monthKey.split('-');
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    return new Intl.DateTimeFormat('en-US', { month: 'short', year: '2-digit' }).format(date);
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (walletMenuRef.current && !walletMenuRef.current.contains(event.target as Node)) {
@@ -81,7 +93,12 @@ const Dashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       setIsLoading(true);
       try {
-        const walletsRes = await services.wallets.list();
+        const [dashboardRes, walletsRes] = await Promise.all([
+          api.get('/api/dashboard'),
+          services.wallets.list(),
+        ]);
+
+        const dashboard = dashboardRes.data?.data ?? {};
         const walletsData = Array.isArray(walletsRes.data)
           ? walletsRes.data
           : Array.isArray(walletsRes.data?.data)
@@ -89,33 +106,65 @@ const Dashboard: React.FC = () => {
             : Array.isArray(walletsRes.data?.items)
               ? walletsRes.data.items
               : [];
+
         const normalized = walletsData.map((w: any) => services.normalizeWallet(w));
-        setWallets(normalized);
-        setActiveWallets(normalized.length);
-        setTotalBalance(normalized.reduce((acc: number, w: any) => acc + (w.currentBalance || 0), 0));
-        // initialize per-wallet visibility (default: visible)
         const visMap: Record<string, boolean> = {};
         normalized.forEach((w: any) => { visMap[w._id] = true; });
+
+        setWallets(normalized);
         setWalletVisibility(visMap);
+        setActiveWallets(Number(dashboard.activeWallets ?? normalized.length));
+        setTotalBalance(toNumber(dashboard.totalBalance ?? normalized.reduce((acc: number, w: any) => acc + (w.currentBalance || 0), 0)));
+        setIncome(toNumber(dashboard.incomeThisMonth));
+        setExpense(toNumber(dashboard.expenseThisMonth));
 
-        // recent transactions: aggregate per-wallet (mock) using services.mock
-        try {
-          const recent = await services.mock.recentAcrossWallets(5);
-          setRecentTransactions(Array.isArray(recent) ? recent : []);
-        } catch (err) {
-          console.error('Failed to fetch recent transactions (mock):', err);
-          setRecentTransactions([]);
-        }
+        const normalizedRecentTransactions = (dashboard.recentTransactions ?? []).map((tx: any) => ({
+          ...tx,
+          amount: toNumber(tx.amount),
+          date: tx.date ?? new Date().toISOString(),
+          walletId: {
+            _id: tx.walletId,
+            name: tx.walletName ?? 'Wallet',
+          },
+          category: tx.category ?? 'General',
+        }));
+        setRecentTransactions(normalizedRecentTransactions);
 
-        // Backend contract doesn't expose insights endpoint; keep charts empty
+        const normalizedMonthlyChart = (dashboard.monthlyTrend ?? []).map((item: any) => ({
+          name: prettifyMonth(item.month),
+          Income: toNumber(item.income),
+          Expense: toNumber(item.expense),
+        }));
+        setMonthlyChart(normalizedMonthlyChart);
+
+        const normalizedCategoryChart = (dashboard.categoryBreakdown ?? []).map((item: any, index: number) => ({
+          name: item.category || 'Uncategorized',
+          value: toNumber(item.total),
+          fill: COLORS[index % COLORS.length],
+        }));
+        setCategoryChart(normalizedCategoryChart);
+
+        const monthlySavings = toNumber(dashboard.incomeThisMonth) > 0
+          ? Math.max(0, Math.round(((toNumber(dashboard.incomeThisMonth) - toNumber(dashboard.expenseThisMonth)) / toNumber(dashboard.incomeThisMonth)) * 100))
+          : 0;
+
+        setInsightMessage(
+          monthlySavings >= 30
+            ? 'Your monthly cash flow is healthy and your spending is well under control.'
+            : monthlySavings >= 10
+              ? 'You are spending within a reasonable range, but there is still room to improve savings.'
+              : 'Your spending is slightly above the ideal range; a tighter budget could help.'
+        );
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error);
+        setRecentTransactions([]);
         setMonthlyChart([]);
         setCategoryChart([]);
         setInsightMessage('');
         setIncome(0);
         setExpense(0);
-
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
+        setTotalBalance(0);
+        setActiveWallets(0);
       } finally {
         setIsLoading(false);
       }

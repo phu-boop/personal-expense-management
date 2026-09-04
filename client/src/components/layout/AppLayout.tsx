@@ -4,7 +4,6 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import BottomNav from './BottomNav';
-import api from '../../api/api';
 import services from '../../api/services';
 import './layout.css';
 

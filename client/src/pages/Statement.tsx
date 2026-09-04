@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Download, Folder } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import api from '../api/api';
 import services from '../api/services';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
@@ -100,28 +99,8 @@ const Statement: React.FC = () => {
     try {
       const statementRes = await services.statement.get(wid || '', { from: startDate, to: endDate } as any);
       console.debug('fetchStatementForWallet: raw', statementRes);
-      // Normalize summary values (server returns decimal strings)
-      const rawSummary = statementRes.data?.summary ?? { openingBalance: '0', totalIncome: '0', totalExpense: '0', closingBalance: '0' };
-      setSummary({
-        openingBalance: Number(String(rawSummary.openingBalance ?? 0)),
-        totalIncome: Number(String(rawSummary.totalIncome ?? 0)),
-        totalExpense: Number(String(rawSummary.totalExpense ?? 0)),
-        closingBalance: Number(String(rawSummary.closingBalance ?? 0)),
-      });
-
-      // Map transactions into frontend-friendly types. Server may return Decimal128, ObjectId, or string values.
-      const rawTx = Array.isArray(statementRes.data?.transactions) ? statementRes.data.transactions : [];
-      const mapped = rawTx.map((t: any) => ({
-        _id: String(t._id ?? t.id ?? ''),
-        type: t.type,
-        amount: Number(String(t.amount ?? 0)),
-        category: t.category ? String(t.category) : '',
-        date: t.date ? (typeof t.date === 'string' ? t.date : new Date(t.date).toISOString()) : '',
-        note: t.note ?? '',
-        balanceAfter: Number(String(t.balanceAfter ?? t.balance_after ?? 0)),
-      }));
-
-      setTransactions(mapped);
+      setSummary(statementRes.data?.summary ?? { openingBalance: 0, totalIncome: 0, totalExpense: 0, closingBalance: 0 });
+      setTransactions(Array.isArray(statementRes.data?.transactions) ? statementRes.data.transactions : []);
       return statementRes;
     } catch (err) {
       console.error('fetchStatementForWallet error', err);

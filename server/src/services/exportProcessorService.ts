@@ -93,6 +93,38 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
       const pass = new stream.PassThrough();
       doc.pipe(pass);
 
+      // Try to find a unicode TTF font that supports Vietnamese (Noto Sans / DejaVu / FreeSans)
+      const candidateFonts = [
+        process.env.PDF_FONT || '',
+        path.join(process.cwd(), 'assets', 'fonts', 'NotoSans-Regular.ttf'),
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+      ].filter(Boolean as any) as string[];
+
+      let chosenFont: string | null = null;
+      for (const p of candidateFonts) {
+        try {
+          if (p && fs.existsSync(p)) {
+            chosenFont = p;
+            break;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (chosenFont) {
+        try {
+          doc.font(chosenFont);
+          console.log('Using PDF font:', chosenFont);
+        } catch (e) {
+          console.warn('Failed to load PDF font', chosenFont, e);
+        }
+      } else {
+        console.warn('No TTF font found for PDF generation; Vietnamese may not render correctly. Set PDF_FONT env or place NotoSans-Regular.ttf in assets/fonts.');
+      }
+
       // write header (Vietnamese)
       doc.fontSize(18).text('Sao kê giao dịch', { align: 'center' });
       doc.moveDown();
