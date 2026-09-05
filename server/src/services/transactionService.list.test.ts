@@ -30,6 +30,80 @@ describe('transactionService.list - openingBalance with snapshots', () => {
     await mongoServer.stop();
   });
 
+  it('returns category id and resolved category name for UI filtering', async () => {
+    const tenantId = new mongoose.Types.ObjectId();
+    const userId = new mongoose.Types.ObjectId();
+
+    const wallet = await Wallet.create({
+      tenantId,
+      userId,
+      name: 'W',
+      initialBalance: toDecimal128('100.00'),
+      initialBalanceDate: new Date('2026-01-01T00:00:00.000Z'),
+      currentBalance: toDecimal128('100.00'),
+      version: 0,
+    });
+
+    const categoryId = new mongoose.Types.ObjectId('67b1b3fd5a7a470d2f4d0a01');
+
+    await Transaction.create({
+      tenantId,
+      userId,
+      walletId: wallet._id,
+      amount: toDecimal128('25'),
+      type: TransactionType.EXPENSE,
+      category: categoryId,
+      date: new Date('2026-01-02T00:00:00.000Z'),
+      note: 'food',
+    });
+
+    const res = await listTransactions({ tenantId, userId, walletId: wallet._id, limit: 10, cursor: undefined, from: new Date('2026-01-01T00:00:00.000Z'), to: new Date('2026-01-10T00:00:00.000Z') });
+
+    assert.equal(res.transactions[0].category, categoryId.toString());
+    assert.equal(res.transactions[0].categoryName, 'Food & Drink');
+  });
+
+  it('resolves category names from the real Category collection when IDs are tenant-specific', async () => {
+    const tenantId = new mongoose.Types.ObjectId();
+    const userId = new mongoose.Types.ObjectId();
+
+    const wallet = await Wallet.create({
+      tenantId,
+      userId,
+      name: 'W',
+      initialBalance: toDecimal128('100.00'),
+      initialBalanceDate: new Date('2026-01-01T00:00:00.000Z'),
+      currentBalance: toDecimal128('100.00'),
+      version: 0,
+    });
+
+    const category = await mongoose.connection.collection('categories').insertOne({
+      tenantId,
+      userId,
+      name: 'Groceries',
+      type: 'EXPENSE',
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await Transaction.create({
+      tenantId,
+      userId,
+      walletId: wallet._id,
+      amount: toDecimal128('25'),
+      type: TransactionType.EXPENSE,
+      category: category.insertedId,
+      date: new Date('2026-01-02T00:00:00.000Z'),
+      note: 'food',
+    });
+
+    const res = await listTransactions({ tenantId, userId, walletId: wallet._id, limit: 10, cursor: undefined, from: new Date('2026-01-01T00:00:00.000Z'), to: new Date('2026-01-10T00:00:00.000Z') });
+
+    assert.equal(res.transactions[0].category, category.insertedId.toString());
+    assert.equal(res.transactions[0].categoryName, 'Groceries');
+  });
+
   it('No snapshot: openingBalance computed from initialBalance + transactions before page start', async () => {
     const tenantId = new mongoose.Types.ObjectId();
     const userId = new mongoose.Types.ObjectId();

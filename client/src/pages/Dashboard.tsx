@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/api';
 import services from '../api/services';
+import { formatMoney } from '../utils/formatMoney';
 import './dashboard.css';
 
 const COLORS = ['#14A800', '#3b82f6', '#6366f1', '#8b5cf6', '#64748b', '#94a3b8'];
@@ -16,11 +17,11 @@ const CustomBarTooltip = ({ active, payload, label }: any) => {
         <p className="tooltip-title">{label}</p>
         <div className="tooltip-row income">
           <span>Income:</span>
-          <strong>+{payload[0]?.value?.toLocaleString('vi-VN')} VND</strong>
+          <strong>+{formatMoney(payload[0]?.value)} VND</strong>
         </div>
         <div className="tooltip-row expense">
           <span>Expense:</span>
-          <strong>-{payload[1]?.value?.toLocaleString('vi-VN')} VND</strong>
+          <strong>-{formatMoney(payload[1]?.value)} VND</strong>
         </div>
       </div>
     );
@@ -36,7 +37,7 @@ const CustomPieTooltip = ({ active, payload }: any) => {
         <p className="tooltip-title" style={{ color: data.payload.fill || '#6366f1' }}>{data.name}</p>
         <div className="tooltip-row">
           <span>Total Spent:</span>
-          <strong>{data.value?.toLocaleString('vi-VN')} VND</strong>
+          <strong>{formatMoney(data.value)} VND</strong>
         </div>
       </div>
     );
@@ -65,6 +66,7 @@ const Dashboard: React.FC = () => {
   const [insightMessage, setInsightMessage] = useState('');
 
   const [isLoading, setIsLoading] = useState(true);
+  const hasFetchedDashboardRef = useRef(false);
 
   const toNumber = (value: unknown) => {
     const parsed = Number(value ?? 0);
@@ -91,6 +93,9 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
+      if (hasFetchedDashboardRef.current) return;
+      hasFetchedDashboardRef.current = true;
+
       setIsLoading(true);
       try {
         const [dashboardRes, walletsRes] = await Promise.all([
@@ -105,7 +110,13 @@ const Dashboard: React.FC = () => {
             ? walletsRes.data.data
             : Array.isArray(walletsRes.data?.items)
               ? walletsRes.data.items
-              : [];
+              : Array.isArray(walletsRes.data?.data?.items)
+                ? walletsRes.data.data.items
+                : Array.isArray(walletsRes.data?.wallets)
+                  ? walletsRes.data.wallets
+                  : Array.isArray(walletsRes.data?.data?.wallets)
+                    ? walletsRes.data.data.wallets
+                    : [];
 
         const normalized = walletsData.map((w: any) => services.normalizeWallet(w));
         const visMap: Record<string, boolean> = {};
@@ -207,7 +218,7 @@ const Dashboard: React.FC = () => {
                 </button>
               </div>
               <div className="metric-value">
-                {showTotalBalance ? `${totalBalance.toLocaleString('vi-VN')} VND` : '•••••••• VND'}
+                {showTotalBalance ? `${formatMoney(totalBalance)} VND` : '•••••••• VND'}
               </div>
               <div
                 ref={walletMenuRef}
@@ -234,7 +245,7 @@ const Dashboard: React.FC = () => {
                             </button>
                           </div>
                           <strong>
-                            {walletVisibility[w._id] ? `${w.currentBalance.toLocaleString('vi-VN')} VND` : '•••••••• VND'}
+                            {walletVisibility[w._id] ? `${formatMoney(w.currentBalance)} VND` : '•••••••• VND'}
                           </strong>
                         </div>
                         <div className="dropdown-wallet-actions" style={{ display: 'flex', gap: '4px' }}>
@@ -272,7 +283,7 @@ const Dashboard: React.FC = () => {
                 <span className="metric-tag income-tag">Inflow</span>
               </div>
               <div className="metric-label">INCOME (This month)</div>
-              <div className="metric-value small income-val">+{income.toLocaleString('vi-VN')} VND</div>
+              <div className="metric-value small income-val">+{formatMoney(income)} VND</div>
               <div className="metric-subnote">Total received this month</div>
             </div>
 
@@ -287,7 +298,7 @@ const Dashboard: React.FC = () => {
                 <span className="metric-tag expense-tag">Outflow</span>
               </div>
               <div className="metric-label">EXPENSE (This month)</div>
-              <div className="metric-value small expense-val">-{expense.toLocaleString('vi-VN')} VND</div>
+              <div className="metric-value small expense-val">-{formatMoney(expense)} VND</div>
               <div className="metric-subnote">Total spent this month</div>
             </div>
 
@@ -431,7 +442,7 @@ const Dashboard: React.FC = () => {
                         </div>
                       </div>
                       <div style={{ fontWeight: 600, color: tx.type === 'INCOME' ? 'var(--primary)' : 'var(--text-primary)' }}>
-                        {tx.type === 'INCOME' ? '+' : '-'}{tx.amount.toLocaleString('vi-VN')} VND
+                        {tx.type === 'INCOME' ? '+' : '-'}{formatMoney(tx.amount)} VND
                       </div>
                     </div>
                   ))}

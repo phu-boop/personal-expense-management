@@ -114,6 +114,32 @@ describe('Wallet API', () => {
     assert.equal(secondPage.body.data.hasMore, false);
   });
 
+  it('GET /api/wallets/compact returns only wallet id and name for lightweight dropdowns', async () => {
+    await request(app)
+      .post('/api/wallets')
+      .set('Authorization', `Bearer ${tokenForUser1}`)
+      .send({ name: 'Wallet A', initialBalance: '100.00' });
+
+    await request(app)
+      .post('/api/wallets')
+      .set('Authorization', `Bearer ${tokenForUser1}`)
+      .send({ name: 'Wallet B', initialBalance: '250.00' });
+
+    const response = await request(app)
+      .get('/api/wallets/compact')
+      .set('Authorization', `Bearer ${tokenForUser1}`)
+      .query({ limit: 10 });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(Array.isArray(response.body.items), true);
+    assert.equal(response.body.items.length, 2);
+    assert.deepEqual(Object.keys(response.body.items[0]).sort(), ['_id', 'name']);
+    assert.equal(response.body.items[0].name, 'Wallet B');
+    assert.equal('currentBalance' in response.body.items[0], false);
+    assert.equal('initialBalance' in response.body.items[0], false);
+  });
+
   it('GET /api/wallets/:walletId rejects wallets outside the authenticated tenant and user', async () => {
     const created = await request(app)
       .post('/api/wallets')

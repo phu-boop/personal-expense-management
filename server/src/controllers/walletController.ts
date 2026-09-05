@@ -44,8 +44,18 @@ export async function listWalletsCompact(req: AuthRequest, res: Response) {
 
     const result = await service.listWalletsForUser({ tenantId: req.user!.tenantId, userId: req.user!.id, limit, cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined });
 
-    // compact shape: items directly in response
-    return res.json({ success: true, items: result.items, hasMore: result.hasMore, nextCursor: result.nextCursor, limit: result.limit });
+    const compactItems = result.items.map((wallet) => ({
+      _id: wallet._id,
+      name: wallet.name,
+    }));
+
+    return res.json({
+      success: true,
+      items: compactItems,
+      hasMore: result.hasMore,
+      nextCursor: result.nextCursor,
+      limit: result.limit,
+    });
   } catch (err: any) {
     console.error('Compact list wallets error:', err);
     return res.status(400).json({ success: false, message: err?.message || 'Failed to list wallets (compact)' });

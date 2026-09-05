@@ -77,3 +77,38 @@ export const listTransactions = async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: err.message });
   }
 };
+
+export const listTransactionsAcrossWallets = async (req: AuthRequest, res: Response) => {
+  const limit = validator.parseLimit(req.query.limit);
+  const cursor = validator.decodeCursor(req.query.cursor as string | undefined);
+  const from = req.query.from ? validator.parseDate(req.query.from) : undefined;
+  const to = req.query.to ? validator.parseDate(req.query.to) : undefined;
+  const walletId = typeof req.query.walletId === 'string' && mongoose.isValidObjectId(req.query.walletId)
+    ? new mongoose.Types.ObjectId(req.query.walletId)
+    : undefined;
+
+  try {
+    const result = walletId
+      ? await txService.listTransactions({
+          tenantId: req.user!.tenantId!,
+          userId: req.user!.id,
+          walletId,
+          limit,
+          cursor,
+          from,
+          to,
+        })
+      : await txService.listTransactionsAcrossWallets({
+          tenantId: req.user!.tenantId!,
+          userId: req.user!.id,
+          limit,
+          cursor,
+          from,
+          to,
+        });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+};

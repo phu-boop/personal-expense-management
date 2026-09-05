@@ -7,6 +7,7 @@ import Statement from './pages/Statement';
 import Login from './pages/Login';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import { ExportQueueProvider } from './contexts/ExportQueueContext';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
 function App() {
@@ -15,20 +16,22 @@ function App() {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+        <ExportQueueProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            <Route element={<ProtectedRoute />}>
-              <Route path="/" element={<AppLayout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="transactions" element={<Transactions />} />
-                <Route path="wallets" element={<Wallets />} />
-                <Route path="statement" element={<Statement />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<AppLayout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="transactions" element={<Transactions />} />
+                  <Route path="wallets" element={<Wallets />} />
+                  <Route path="statement" element={<Statement />} />
+                </Route>
               </Route>
-            </Route>
-          </Routes>
-        </BrowserRouter>
+            </Routes>
+          </BrowserRouter>
+        </ExportQueueProvider>
       </AuthProvider>
     </GoogleOAuthProvider>
   );

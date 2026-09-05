@@ -3,7 +3,7 @@ import Transaction from '../models/Transaction';
 import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
 import SnapshotService from '../services/snapshotService';
 
-const DEFAULT_SNAPSHOT_INTERVAL = 50000;
+const DEFAULT_SNAPSHOT_INTERVAL = 1;
 
 /**
  * Check the latest VALID snapshot for the wallet and create a new snapshot
@@ -51,7 +51,27 @@ export async function createSnapshotIfNeeded(
 
   const countAfter = await Transaction.countDocuments(afterPredicate);
 
+  console.log('[snapshotWorker] countAfter check', {
+    walletId: walletObjectId.toString(),
+    tenantId: tenantId ? String(tenantId) : undefined,
+    interval,
+    countAfter,
+    latestSnapshotId: latestSnapshot?._id ? String(latestSnapshot._id) : null,
+    latestSnapshotCheckpoint: latestSnapshot ? {
+      lastTransactionDate: latestSnapshot.lastTransactionDate,
+      lastTransactionCreatedAt: latestSnapshot.lastTransactionCreatedAt,
+      lastTransactionId: latestSnapshot.lastTransactionId ? String(latestSnapshot.lastTransactionId) : null,
+    } : null,
+  });
+
   if (countAfter < interval) {
+    console.log('[snapshotWorker] snapshot skipped', {
+      walletId: walletObjectId.toString(),
+      tenantId: tenantId ? String(tenantId) : undefined,
+      interval,
+      countAfter,
+      reason: 'interval not reached',
+    });
     return { created: false, reason: 'interval not reached', countAfter };
   }
 
@@ -70,6 +90,19 @@ export async function createSnapshotIfNeeded(
   } as any;
 
   const snapshot = await SnapshotService.createSnapshot(walletObjectId, checkpoint, tenantId);
+
+  console.log('[snapshotWorker] snapshot created', {
+    walletId: walletObjectId.toString(),
+    tenantId: tenantId ? String(tenantId) : undefined,
+    interval,
+    countAfter,
+    checkpoint: {
+      date: checkpoint.date,
+      createdAt: checkpoint.createdAt,
+      id: checkpoint.id ? String(checkpoint.id) : null,
+    },
+    snapshotId: snapshot._id ? String(snapshot._id) : null,
+  });
 
   return { created: true, snapshotId: snapshot._id };
 }

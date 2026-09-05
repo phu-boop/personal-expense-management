@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
 import { Download, Folder } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import services from '../api/services';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
+import { useExportQueue } from '../contexts/ExportQueueContext';
+import { formatMoney } from '../utils/formatMoney';
 import './statement.css';
 
 interface Summary {
@@ -24,18 +25,51 @@ interface Transaction {
   balanceAfter: number;
 }
 
+const toNumber = (value: unknown): number => {
+  if (value == null) return 0;
+
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === 'object') {
+    const maybeDecimal = (value as any)?.$numberDecimal;
+    if (typeof maybeDecimal === 'string') {
+      const parsed = Number(maybeDecimal);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+  }
+
+  const parsed = Number(value as any);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeStatementResponse = (payload: any) => {
+  const summarySource = payload?.summary ?? payload ?? {};
+
+  return {
+    summary: {
+      openingBalance: toNumber(summarySource.openingBalance),
+      totalIncome: toNumber(summarySource.totalIncome),
+      totalExpense: toNumber(summarySource.totalExpense),
+      closingBalance: toNumber(summarySource.closingBalance),
+    },
+    transactions: Array.isArray(summarySource.transactions) ? summarySource.transactions.map((tx: any) => ({
+      ...tx,
+      amount: toNumber(tx?.amount),
+      balanceAfter: toNumber(tx?.balanceAfter),
+      balanceBefore: toNumber(tx?.balanceBefore),
+    })) : [],
+  };
+};
+
 interface Wallet {
   _id: string;
   name: string;
 }
 
-interface ExportQueueItem {
-  id: number;
-  fileName: string;
-  status: 'processing' | 'done' | 'error';
-  step: string;
-  progress: number;
-}
+const PAGE_SIZE = 20;
 
 const Statement: React.FC = () => {
   const [summary, setSummary] = useState<Summary>({
@@ -47,9 +81,12 @@ const Statement: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const isExportingRef = useRef(false);
-  const [exportQueue, setExportQueue] = useState<ExportQueueItem[]>([]);
+  const { addExportQueueTask, updateExportQueueTask, removeExportQueueTask } = useExportQueue();
 
   const now = new Date();
   const defaultEndDate = now.toISOString().slice(0, 10);
@@ -83,9 +120,18 @@ const Statement: React.FC = () => {
       const walletsRes = await services.wallets.compact();
       console.debug('fetchWallets: raw', walletsRes);
       const resp = walletsRes?.data ?? walletsRes;
-      const walletList = findFirstArray(resp) || [];
+      const walletList = Array.isArray(resp)
+        ? resp
+        : Array.isArray(resp?.items)
+          ? resp.items
+          : Array.isArray(resp?.data)
+            ? resp.data
+            : findFirstArray(resp) || [];
       console.debug('fetchWallets: parsed length', walletList.length, walletList[0] ?? null);
-      setWallets(walletList.map((w: any) => services.normalizeWallet(w)));
+      setWallets(walletList.map((w: any) => ({
+        _id: w._id,
+        name: w.name,
+      })));
       return walletList;
     } catch (err) {
       console.error('fetchWallets error', err);
@@ -94,24 +140,57 @@ const Statement: React.FC = () => {
     }
   };
 
-  const fetchStatementForWallet = async (wid?: string) => {
-    console.debug('fetchStatementForWallet: start', { walletId: wid });
+  const fetchStatementForWallet = async (wid?: string, cursorOverride?: string | null, append = false) => {
+    console.debug('fetchStatementForWallet: start', { walletId: wid, append, cursorOverride });
     try {
-      const statementRes = await services.statement.get(wid || '', { from: startDate, to: endDate } as any);
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      const params: any = {
+        from: startDate,
+        to: endDate,
+        limit: PAGE_SIZE,
+      };
+      if (cursorOverride) params.cursor = cursorOverride;
+
+      const statementRes = await services.statement.get(wid || '', params);
       console.debug('fetchStatementForWallet: raw', statementRes);
-      setSummary(statementRes.data?.summary ?? { openingBalance: 0, totalIncome: 0, totalExpense: 0, closingBalance: 0 });
-      setTransactions(Array.isArray(statementRes.data?.transactions) ? statementRes.data.transactions : []);
+
+      const normalized = normalizeStatementResponse(statementRes.data ?? {});
+      const payloadTransactions = normalized.transactions as Transaction[];
+
+      if (append) {
+        setTransactions((prev) => [...prev, ...payloadTransactions]);
+      } else {
+        setSummary(normalized.summary);
+        setTransactions(payloadTransactions);
+      }
+
+      setNextCursor(statementRes.data?.nextCursor ?? null);
+      setHasMore(Boolean(statementRes.data?.nextCursor));
       return statementRes;
     } catch (err) {
       console.error('fetchStatementForWallet error', err);
-      setSummary({ openingBalance: 0, totalIncome: 0, totalExpense: 0, closingBalance: 0 });
-      setTransactions([]);
+      if (!append) {
+        setSummary({ openingBalance: 0, totalIncome: 0, totalExpense: 0, closingBalance: 0 });
+        setTransactions([]);
+      }
+      setNextCursor(null);
+      setHasMore(false);
       return null;
+    } finally {
+      if (append) {
+        setIsLoadingMore(false);
+      } else {
+        setIsLoading(false);
+      }
     }
   };
 
   const fetchAll = async () => {
-    setIsLoading(true);
     try {
       const walletList = await fetchWallets();
       if (!walletId && walletList.length > 0) {
@@ -119,11 +198,11 @@ const Statement: React.FC = () => {
         if (firstId) {
           console.debug('fetchAll: defaulting walletId to', firstId);
           setWalletId(firstId);
-          await fetchStatementForWallet(firstId);
+          await fetchStatementForWallet(firstId, null, false);
           return;
         }
       }
-      await fetchStatementForWallet(walletId);
+      await fetchStatementForWallet(walletId, null, false);
     } finally {
       setIsLoading(false);
     }
@@ -146,24 +225,6 @@ const Statement: React.FC = () => {
 
   const handleGenerate = () => {
     fetchAll();
-  };
-
-  const addExportQueueTask = (fileName: string, step: string, progress: number): number => {
-    const taskId = Date.now() + Math.random();
-    const task: ExportQueueItem = {
-      id: taskId,
-      fileName,
-      status: 'processing',
-      step,
-      progress,
-    };
-
-    setExportQueue((previous) => [task, ...previous].slice(0, 3));
-    return taskId;
-  };
-
-  const updateExportQueueTask = (taskId: number, updates: Partial<ExportQueueItem>) => {
-    setExportQueue((previous) => previous.map((task) => (task.id === taskId ? { ...task, ...updates } : task)));
   };
 
   const exportFile = async (format: 'xlsx' | 'pdf') => {
@@ -190,21 +251,7 @@ const Statement: React.FC = () => {
       const jobId = createRes.data.jobId;
       updateExportQueueTask(taskId, { step: 'Generating report...', progress: 35 });
 
-      let pollAttempts = 0;
-      const maxPollAttempts = 40;
-
       const pollForCompletion = async (): Promise<void> => {
-        pollAttempts += 1;
-
-        if (pollAttempts > maxPollAttempts) {
-          updateExportQueueTask(taskId, {
-            status: 'error',
-            step: 'Hết thời gian chờ xuất file',
-            progress: 100,
-          });
-          throw new Error('Export polling timed out.');
-        }
-
         const jobRes = await services.exports.get(jobId);
         const status = jobRes.data.status;
 
@@ -236,7 +283,7 @@ const Statement: React.FC = () => {
           }
 
           window.setTimeout(() => {
-            setExportQueue((previous) => previous.filter((task) => task.id !== taskId));
+            removeExportQueueTask(taskId);
           }, 1800);
 
           setIsExporting(false);
@@ -254,7 +301,7 @@ const Statement: React.FC = () => {
 
         updateExportQueueTask(taskId, {
           step: 'Generating report...',
-          progress: Math.min(90, 35 + pollAttempts * 2),
+          progress: Math.min(90, 35 + 2),
         });
 
         await new Promise((resolve) => window.setTimeout(resolve, 1500));
@@ -290,24 +337,6 @@ const Statement: React.FC = () => {
         </div>
       </header>
 
-      {exportQueue.length > 0 && ReactDOM.createPortal(
-        <div className="export-queue-floating">
-          <div className="export-queue-panel">
-            <div className="export-queue-header">Processing: {exportQueue.filter((task) => task.status === 'processing').length || 1}</div>
-            {exportQueue.map((task) => (
-              <div key={task.id} className={`export-queue-card ${task.status}`}>
-                <div className="export-progress-bar">
-                  <span className="export-progress-fill" style={{ width: `${task.progress}%` }} />
-                </div>
-                <div className="export-task-name">{task.fileName}</div>
-                <div className="export-task-state">{task.step}</div>
-              </div>
-            ))}
-          </div>
-        </div>,
-        document.body
-      )}
-
       <div className="card filters-card glass-panel animate-fade-in">
         <div className="filter-group">
           <label>Wallet {wallets.length > 0 ? `(${wallets.length})` : '(0)'}</label>
@@ -336,19 +365,19 @@ const Statement: React.FC = () => {
       <div className="statement-summary-grid animate-fade-in">
         <div className="summary-item">
           <div className="summary-label">Opening Balance</div>
-          <div className="summary-value">{summary.openingBalance.toLocaleString('vi-VN')} VND</div>
+          <div className="summary-value">{formatMoney(summary.openingBalance)} VND</div>
         </div>
         <div className="summary-item">
           <div className="summary-label">Total Income</div>
-          <div className="summary-value income">+{summary.totalIncome.toLocaleString('vi-VN')} VND</div>
+          <div className="summary-value income">+{formatMoney(summary.totalIncome)} VND</div>
         </div>
         <div className="summary-item">
           <div className="summary-label">Total Expense</div>
-          <div className="summary-value expense">-{summary.totalExpense.toLocaleString('vi-VN')} VND</div>
+          <div className="summary-value expense">-{formatMoney(summary.totalExpense)} VND</div>
         </div>
         <div className="summary-item highlight">
           <div className="summary-label">Closing Balance</div>
-          <div className="summary-value">{summary.closingBalance.toLocaleString('vi-VN')} VND</div>
+          <div className="summary-value">{formatMoney(summary.closingBalance)} VND</div>
         </div>
       </div>
 
@@ -364,37 +393,52 @@ const Statement: React.FC = () => {
             <span>Choose another date range or add a new transaction to generate a statement.</span>
           </div>
         ) : (
-          <table className="statement-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th className="right-align">Income</th>
-                <th className="right-align">Expense</th>
-                <th className="right-align">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map(tx => (
-                <tr key={tx._id}>
-                  <td data-label="Date" className="tx-date-col">{new Date(tx.date).toLocaleDateString()}</td>
-                  <td data-label="Description">
-                    <div className="tx-desc">{tx.note || tx.category}</div>
-                    <div className="tx-cat">{tx.category}</div>
-                  </td>
-                  <td data-label="Income" className="right-align income-col">
-                    {tx.type === 'INCOME' ? `+${tx.amount.toLocaleString('vi-VN')} VND` : '-'}
-                  </td>
-                  <td data-label="Expense" className="right-align expense-col">
-                    {tx.type === 'EXPENSE' ? `-${tx.amount.toLocaleString('vi-VN')} VND` : '-'}
-                  </td>
-                  <td data-label="Balance" className="right-align balance-col">
-                    {tx.balanceAfter.toLocaleString('vi-VN')} VND
-                  </td>
+          <>
+            <table className="statement-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th className="right-align">Income</th>
+                  <th className="right-align">Expense</th>
+                  <th className="right-align">Balance</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {transactions.map(tx => (
+                  <tr key={tx._id}>
+                    <td data-label="Date" className="tx-date-col">{new Date(tx.date).toLocaleDateString()}</td>
+                    <td data-label="Description">
+                      <div className="tx-desc">{tx.note || tx.category}</div>
+                      <div className="tx-cat">{tx.category}</div>
+                    </td>
+                    <td data-label="Income" className="right-align income-col">
+                      {tx.type === 'INCOME' ? `+${formatMoney(tx.amount)} VND` : '-'}
+                    </td>
+                    <td data-label="Expense" className="right-align expense-col">
+                      {tx.type === 'EXPENSE' ? `-${formatMoney(tx.amount)} VND` : '-'}
+                    </td>
+                    <td data-label="Balance" className="right-align balance-col">
+                      {formatMoney(tx.balanceAfter)} VND
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {hasMore && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem 0 0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => fetchStatementForWallet(walletId, nextCursor, true)}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? 'Loading...' : 'Load more'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

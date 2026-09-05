@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Plus, CreditCard, X, Eye, EyeOff, BarChart3, PlusCircle, ListFilter } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import services from '../api/services';
+import { formatMoney } from '../utils/formatMoney';
 import './wallets.css';
 
 interface Wallet {
@@ -88,7 +89,7 @@ const Wallets: React.FC = () => {
       setInitialBalance('');
       return;
     }
-    const formatted = Number(rawDigits).toLocaleString('vi-VN');
+    const formatted = formatMoney(Number(rawDigits));
     setInitialBalance(formatted);
   };
 
@@ -166,7 +167,7 @@ const Wallets: React.FC = () => {
                     <div className="wallet-balance">
                       <p className="balance-label">Current Balance</p>
                       <h2>
-                        {isVisible ? `${wallet.currentBalance.toLocaleString('vi-VN')} VND` : '•••••••• VND'}
+                        {isVisible ? `${formatMoney(wallet.currentBalance)} VND` : '•••••••• VND'}
                       </h2>
                     </div>
 

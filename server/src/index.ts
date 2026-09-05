@@ -10,10 +10,11 @@ import './models/ExportJob';
 
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
-import transactionRoutes from './routes/transaction';
+import transactionRoutes, { allTransactionsRouter } from './routes/transaction';
 import statementRoutes from './routes/statement';
 import exportRoutes from './routes/export';
 import dashboardRoutes from './routes/dashboard';
+import categoryRoutes from './routes/category';
 import config from './config';
 
 const app = express();
@@ -29,6 +30,8 @@ app.use(
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api', dashboardRoutes);
+app.use('/api', categoryRoutes);
+app.use('/api', allTransactionsRouter);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/wallets', transactionRoutes);
 app.use('/api/wallets', statementRoutes);

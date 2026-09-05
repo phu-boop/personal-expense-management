@@ -7,6 +7,7 @@ import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapsho
 import orderingUtils from '../utils/ordering';
 import { toDecimal, toDecimal128 } from '../utils/money';
 import { getTransactionEffect } from '../utils/transactionEffect';
+export { listTransactionsAcrossWallets } from './transactionService.list';
 
 export interface CreateTransactionInput {
   tenantId: mongoose.Types.ObjectId;

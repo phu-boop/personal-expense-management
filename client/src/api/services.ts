@@ -33,6 +33,8 @@ export const normalizeWalletList = (arr: any[]) => Array.isArray(arr) ? arr.map(
  * Transaction APIs follow contract: all are under /api/wallets/:walletId/transactions
  */
 export const transactions = {
+  // GET /api/transactions?walletId=&from=&to=&limit=&cursor=
+  listAll: (params?: Record<string, any>) => api.get('/api/transactions', { params }),
   // GET /api/wallets/:walletId/transactions?from=&to=&limit=&cursor=
   list: (walletId: string, params?: Record<string, any>) => api.get(`/api/wallets/${walletId}/transactions`, { params }),
   // POST /api/wallets/:walletId/transactions
@@ -44,6 +46,13 @@ export const transactions = {
 export const statement = {
   // GET /api/wallets/:walletId/statement?from=&to=
   get: (walletId: string, params?: Record<string, any>) => api.get(`/api/wallets/${walletId}/statement`, { params }),
+};
+
+export const categories = {
+  list: (params?: Record<string, any>) => api.get('/api/categories', { params }),
+  create: (payload: any) => api.post('/api/categories', payload),
+  update: (categoryId: string, payload: any) => api.patch(`/api/categories/${categoryId}`, payload),
+  remove: (categoryId: string) => api.delete(`/api/categories/${categoryId}`),
 };
 
 export const auth = {
@@ -86,6 +95,7 @@ const defaultExport = {
   wallets,
   transactions,
   statement,
+  categories,
   auth,
   exports: exportsApi,
   mock,

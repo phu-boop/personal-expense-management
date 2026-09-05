@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import services from '../api/services';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
+import { formatMoney } from '../utils/formatMoney';
 import './transactions.css';
 
 interface Wallet {
@@ -15,13 +16,13 @@ interface Wallet {
 interface Transaction {
   _id: string;
   type: 'INCOME' | 'EXPENSE';
-  // backend may return amount as string (decimal)
   amount: string;
-  category: string;
+  category?: string | null;
+  categoryName?: string;
   walletId: any;
   date: string;
+  updatedAt?: string;
   note?: string;
-  // server-derived balances are strings as well
   balanceAfter?: string;
   balanceBefore?: string;
 }
@@ -40,6 +41,9 @@ const Transactions: React.FC = () => {
   const paramWalletId = searchParams.get('walletId') || '';
   const paramAction = searchParams.get('action') || '';
 
+  type CategoryOption = { value: string; label: string };
+
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterWallet, setFilterWallet] = useState(paramWalletId);
   const [filterCategory, setFilterCategory] = useState('');
@@ -49,7 +53,7 @@ const Transactions: React.FC = () => {
   const [txType, setTxType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [amount, setAmount] = useState('');
   const [walletId, setWalletId] = useState('');
-  const [category, setCategory] = useState('Food & Drink'); // Default
+  const [category, setCategory] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
 
@@ -60,6 +64,48 @@ const Transactions: React.FC = () => {
     setIsModalOpen(false);
     setEditingTxId(null);
     setSubmitError('');
+  };
+
+  const fetchWalletOptions = async () => {
+    try {
+      const walletsRes = await services.wallets.compact();
+      const walletList = Array.isArray(walletsRes.data)
+        ? walletsRes.data
+        : Array.isArray(walletsRes.data?.items)
+          ? walletsRes.data.items
+          : Array.isArray(walletsRes.data?.data)
+            ? walletsRes.data.data
+            : [];
+
+      const minimal: Array<{ _id: string; name: string }> = walletList.map((w: any) => ({ _id: w._id, name: w.name }));
+      setWallets(minimal);
+      return minimal;
+    } catch (error) {
+      console.error('Failed to fetch wallet options:', error);
+      setWallets([]);
+      return [] as Array<{ _id: string; name: string }>;
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await services.categories.list();
+      const list = Array.isArray(res.data?.categories) ? res.data.categories : [];
+      const mapped: CategoryOption[] = list.map((c: any) => ({ value: String(c._id), label: String(c.name) }));
+      setCategoryOptions(mapped);
+
+      if (mapped.length > 0 && !category) {
+        setCategory(mapped.find((c: CategoryOption) => c.label === 'Food & Drink')?.value ?? mapped[0].value);
+      }
+
+      if (mapped.length > 0 && category && !mapped.some((c: CategoryOption) => c.value === category)) {
+        const preferred = mapped.filter((c: CategoryOption) => c.value !== '').find((c: CategoryOption) => c.label === (txType === 'EXPENSE' ? 'Food & Drink' : 'Salary')) ?? mapped[0];
+        setCategory(preferred.value);
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      setCategoryOptions([]);
+    }
   };
 
   const fetchData = async (append = false, cursor?: string | null) => {
@@ -73,56 +119,47 @@ const Transactions: React.FC = () => {
       if (rangeTo) params.to = new Date(rangeTo + 'T00:00:00Z').toISOString();
       if (cursor) params.cursor = cursor;
 
-      // prefer compact wallet list for lightweight select options
-      const walletsRes = await services.wallets.compact();
-      const walletList = Array.isArray(walletsRes.data) ? walletsRes.data : (walletsRes.data?.items ?? []);
+      let walletList = wallets;
+      if (walletList.length === 0) {
+        walletList = await fetchWalletOptions();
+      }
 
       let combinedTxs: Transaction[] = [];
       let nextC: string | null = null;
       let more = false;
+      setOpeningBalance(null);
+
+      const minimal: Array<{ _id: string; name: string }> = walletList.map((w: any) => ({ _id: w._id, name: w.name }));
 
       if (filterWallet) {
-        // Use contract endpoint per-wallet
         const res = await services.transactions.list(filterWallet, params as any);
         const data = res.data;
         const txList = Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data.data) ? data.data : []);
         combinedTxs = txList;
         nextC = data.nextCursor ?? null;
         more = Boolean(data.hasMore);
-        // opening balance provided by contract
         setOpeningBalance(data.openingBalance ?? null);
       } else {
-        // No wallet filter: aggregate across wallets (mock behavior)
-        const fetches = walletList.map((w: any) =>
-          services.transactions.list(w._id, params as any).then((r: any) => ({ walletId: w._id, data: r.data })).catch(() => null)
-        );
-        const results = await Promise.all(fetches);
-        results.forEach((r: any) => {
-          if (!r || !r.data) return;
-          const txs = Array.isArray(r.data.transactions) ? r.data.transactions : (Array.isArray(r.data.data) ? r.data.data : []);
-          txs.forEach((t: Transaction) => combinedTxs.push(t));
-        });
-        // Sort and limit
-        combinedTxs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        combinedTxs = combinedTxs.slice(0, Number(limit));
-        nextC = null;
-        more = false;
+        const res = await services.transactions.listAll(params as any);
+        const data = res.data;
+        const txList = Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data.data) ? data.data : []);
+        combinedTxs = txList;
+        nextC = data.nextCursor ?? null;
+        more = Boolean(data.hasMore);
+        setOpeningBalance(null);
       }
 
-      // normalize transaction walletId to include wallet name for UI
       const walletNameMap: Record<string, string> = {};
-      const minimal: Array<{ _id: string; name: string }> = walletList.map((w: any) => ({ _id: w._id, name: w.name }));
       minimal.forEach((w: { _id: string; name: string }) => { walletNameMap[w._id] = w.name; });
 
       const normalizedTxs = combinedTxs.map((tx: any) => {
         const wid = typeof tx.walletId === 'string' ? tx.walletId : (tx.walletId?._id ?? tx.walletId);
         return {
           ...tx,
-          walletId: typeof wid === 'string' ? { _id: wid, name: walletNameMap[wid] ?? '' } : tx.walletId,
+          walletId: typeof wid === 'string' ? { _id: wid, name: walletNameMap[wid] ?? (typeof tx.walletId === 'object' ? tx.walletId.name : '') } : tx.walletId,
         } as Transaction;
       });
 
-      // sort newest -> oldest
       normalizedTxs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       setTransactions(prev => append ? [...prev, ...normalizedTxs] : normalizedTxs);
@@ -141,38 +178,37 @@ const Transactions: React.FC = () => {
   };
 
   useEffect(() => {
-    // default date range: today -> tomorrow
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tyyyy = tomorrow.getFullYear();
-    const tmm = String(tomorrow.getMonth() + 1).padStart(2, '0');
-    const tdd = String(tomorrow.getDate()).padStart(2, '0');
-    const tomorrowStr = `${tyyyy}-${tmm}-${tdd}`;
+    const initialize = async () => {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tyyyy = tomorrow.getFullYear();
+      const tmm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const tdd = String(tomorrow.getDate()).padStart(2, '0');
+      const tomorrowStr = `${tyyyy}-${tmm}-${tdd}`;
 
-    if (!rangeFrom && !rangeTo) {
-      setRangeFrom(todayStr);
-      setRangeTo(tomorrowStr);
-      // fetch with defaults
+      if (!rangeFrom && !rangeTo) {
+        setRangeFrom(todayStr);
+        setRangeTo(tomorrowStr);
+      }
+
+      const walletList = await fetchWalletOptions();
+      if (!filterWallet && walletList.length > 0) {
+        const defaultWalletId = paramWalletId || '';
+        setFilterWallet(defaultWalletId);
+        setWalletId(defaultWalletId);
+      }
+
+      await fetchCategories();
       fetchData(false, null);
-      return;
-    }
+    };
 
-    fetchData(false, null);
+    void initialize();
   }, []);
-
-  useEffect(() => {
-    if (!walletId && wallets.length > 0) {
-      setWalletId(wallets[0]._id);
-      return;
-    }
-
-    fetchData(false, null);
-  }, [filterWallet, filterCategory]);
 
   useEffect(() => {
     if (paramWalletId) {
@@ -183,6 +219,33 @@ const Transactions: React.FC = () => {
       setIsModalOpen(true);
     }
   }, [searchParams, paramWalletId, paramAction]);
+
+  const walletOptions = wallets.map(w => ({ value: w._id, label: w.name }));
+  const categoryOptionsExpense = useMemo(
+    () => categoryOptions.filter((c: CategoryOption) => c.label !== 'Salary' && c.label !== 'Business' && c.label !== 'Gift' && c.label !== 'Other Income'),
+    [categoryOptions]
+  );
+  const categoryOptionsIncome = useMemo(
+    () => categoryOptions.filter((c: CategoryOption) => c.label !== 'Food & Drink' && c.label !== 'Shopping' && c.label !== 'Transport' && c.label !== 'Bills' && c.label !== 'Entertainment' && c.label !== 'Other Expense'),
+    [categoryOptions]
+  );
+
+  useEffect(() => {
+    if (categoryOptions.length > 0 && !category) {
+      const preferred = categoryOptions.find((c: CategoryOption) => c.label === (txType === 'EXPENSE' ? 'Food & Drink' : 'Salary')) ?? categoryOptions[0];
+      setCategory(preferred.value);
+    }
+  }, [categoryOptions, txType, category]);
+
+  useEffect(() => {
+    if (categoryOptions.length > 0) {
+      const currentTypeOptions = txType === 'EXPENSE' ? categoryOptionsExpense : categoryOptionsIncome;
+      if (!currentTypeOptions.some((option: CategoryOption) => option.value === category)) {
+        const preferred = currentTypeOptions[0];
+        if (preferred) setCategory(preferred.value);
+      }
+    }
+  }, [txType, categoryOptions, categoryOptionsExpense, categoryOptionsIncome, category]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawDigits = e.target.value.replace(/\D/g, '');
@@ -215,7 +278,6 @@ const Transactions: React.FC = () => {
         date: new Date(date).toISOString(),
       };
       if (note) payload.note = note;
-      // send category only if it looks like an ObjectId
       if (/^[a-f0-9]{24}$/i.test(category)) payload.category = category;
 
       if (editingTxId) {
@@ -238,12 +300,24 @@ const Transactions: React.FC = () => {
     }
   };
 
+  const formatTransactionTime = (value?: string, fallbackDate?: string) => {
+    const raw = value || fallbackDate;
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  };
+
   const filteredAndGroupedTransactions = useMemo(() => {
     let filtered = transactions;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(tx =>
-        tx.category.toLowerCase().includes(q) ||
+        (tx.categoryName ?? tx.category ?? '').toLowerCase().includes(q) ||
         (tx.note && tx.note.toLowerCase().includes(q))
       );
     }
@@ -273,25 +347,14 @@ const Transactions: React.FC = () => {
   }, [transactions, searchQuery, filterWallet, filterCategory]);
 
   const uniqueCategories = useMemo(() => {
-    const cats = new Set(transactions.map(tx => tx.category));
-    return Array.from(cats);
+    const cats = new Map<string, string>();
+    transactions.forEach((tx) => {
+      if (tx.category && tx.categoryName) {
+        cats.set(tx.category, tx.categoryName);
+      }
+    });
+    return Array.from(cats.entries()).map(([value, label]) => ({ value, label }));
   }, [transactions]);
-
-  const walletOptions = wallets.map(w => ({ value: w._id, label: w.name }));
-  const categoryOptionsExpense = [
-    { value: 'Food & Drink', label: 'Food & Drink' },
-    { value: 'Shopping', label: 'Shopping' },
-    { value: 'Transport', label: 'Transport' },
-    { value: 'Bills', label: 'Bills' },
-    { value: 'Entertainment', label: 'Entertainment' },
-    { value: 'Other Expense', label: 'Other Expense' }
-  ];
-  const categoryOptionsIncome = [
-    { value: 'Salary', label: 'Salary' },
-    { value: 'Business', label: 'Business' },
-    { value: 'Gift', label: 'Gift' },
-    { value: 'Other Income', label: 'Other Income' }
-  ];
 
   return (
     <div className="transactions-page">
@@ -310,7 +373,7 @@ const Transactions: React.FC = () => {
         {openingBalance !== null && (
           <div className="opening-balance-card">
             <strong>Opening Balance:</strong>
-            <span style={{ marginLeft: 8 }}>{Number(openingBalance).toLocaleString('vi-VN')} VND</span>
+            <span style={{ marginLeft: 8 }}>{formatMoney(Number(openingBalance))} VND</span>
           </div>
         )}
         <div className="list-toolbar">
@@ -333,17 +396,29 @@ const Transactions: React.FC = () => {
               style={{ minWidth: '150px' }}
             />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>From</label>
-              <input type="date" value={rangeFrom ?? ''} onChange={(e) => setRangeFrom(e.target.value || null)} />
-              <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>To</label>
-              <input type="date" value={rangeTo ?? ''} onChange={(e) => setRangeTo(e.target.value || null)} />
-              <button className="btn-secondary" onClick={() => fetchData(false, null)}>Apply</button>
-              <button className="btn-secondary" onClick={() => { setRangeFrom(null); setRangeTo(null); fetchData(false, null); }}>Clear</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>From</label>
+                <div style={{ width: 160 }}>
+                  <CustomDatePicker value={rangeFrom ?? ''} onChange={(v) => setRangeFrom(v || null)} placeholder="From" />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>To</label>
+                <div style={{ width: 160 }}>
+                  <CustomDatePicker value={rangeTo ?? ''} onChange={(v) => setRangeTo(v || null)} placeholder="To" />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button className="btn-secondary" onClick={() => fetchData(false, null)}>Apply</button>
+                <button className="btn-secondary" onClick={() => { setRangeFrom(null); setRangeTo(null); fetchData(false, null); }}>Clear</button>
+              </div>
             </div>
             <CustomSelect
               value={filterCategory}
               onChange={setFilterCategory}
-              options={[{value: '', label: 'All Categories'}, ...uniqueCategories.map(c => ({value: c, label: c}))]}
+              options={[{value: '', label: 'All Categories'}, ...uniqueCategories]}
               placeholder="All Categories"
               style={{ minWidth: '150px' }}
             />
@@ -387,44 +462,58 @@ const Transactions: React.FC = () => {
                   <div className="date-group-header">
                     <div className="date-title">{displayDate}</div>
                     <div className="date-summary">
-                      {group.totalIncome > 0 && <span className="income-sum">+{group.totalIncome.toLocaleString('vi-VN')}</span>}
-                      {group.totalExpense > 0 && <span className="expense-sum">-{group.totalExpense.toLocaleString('vi-VN')}</span>}
+                      {group.totalIncome > 0 && <span className="income-sum">+{formatMoney(group.totalIncome)}</span>}
+                      {group.totalExpense > 0 && <span className="expense-sum">-{formatMoney(group.totalExpense)}</span>}
                     </div>
                   </div>
                   <div className="date-group-items">
-                    {group.transactions.map((tx) => (
-                      <div key={tx._id} className="transaction-row">
-                        <div className={`tx-icon-wrapper ${tx.type.toLowerCase()}`}>
-                          {tx.type === 'INCOME' ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
-                        </div>
-                        <div className="tx-details">
-                          <div className="tx-category">{tx.category}</div>
-                          <div className="tx-note">{tx.note ? `${tx.note} • ` : ''}{tx.walletId?.name}</div>
-                        </div>
-                        <div className="tx-meta">
-                          <div className="tx-balances">
-                            <div className="tx-balance-before">{Number(tx.balanceBefore ?? tx.balanceBefore).toLocaleString('vi-VN')} VND</div>
-                            <div className={`tx-amount ${tx.type.toLowerCase()}`}>{tx.type === 'INCOME' ? '+' : '-'}{(typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount).toLocaleString('vi-VN')} VND</div>
-                            <div className="tx-balance-after">{Number(tx.balanceAfter ?? tx.balanceAfter).toLocaleString('vi-VN')} VND</div>
+                    {group.transactions.map((tx) => {
+                      const hasBalanceInfo = tx.balanceBefore !== null && tx.balanceBefore !== undefined && tx.balanceAfter !== null && tx.balanceAfter !== undefined;
+                      const timeLabel = formatTransactionTime(tx.updatedAt, tx.date);
+
+                      return (
+                        <div key={tx._id} className="transaction-row">
+                          <div className={`tx-icon-wrapper ${tx.type.toLowerCase()}`}>
+                            {tx.type === 'INCOME' ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                           </div>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <button className="icon-btn edit-tx-btn" title="Edit" onClick={() => {
-                              // open modal in edit mode
-                              setEditingTxId(tx._id);
-                              setIsModalOpen(true);
-                              setTxType(tx.type);
-                              setAmount((typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount).toLocaleString('vi-VN'));
-                              setWalletId(tx.walletId?._id || '');
-                              setCategory(tx.category || '');
-                              setDate(new Date(tx.date).toISOString().split('T')[0]);
-                              setNote(tx.note || '');
-                            }}>
-                              <Edit size={16} />
-                            </button>
+                          <div className="tx-details">
+                            <div className="tx-category">{tx.categoryName ?? tx.category ?? 'Uncategorized'}</div>
+                            <div className="tx-note-row">
+                              <span className="tx-note">{tx.note ? `${tx.note}${tx.walletId?.name ? ' • ' : ''}` : ''}{tx.walletId?.name}</span>
+                              {timeLabel && <span className="tx-time">{timeLabel}</span>}
+                            </div>
+                          </div>
+                          <div className="tx-meta">
+                            <div className="tx-balances">
+                              {hasBalanceInfo ? (
+                                <>
+                                  <div className="tx-balance-before">{formatMoney(Number(tx.balanceBefore))} VND</div>
+                                  <div className={`tx-amount ${tx.type.toLowerCase()}`}>{tx.type === 'INCOME' ? '+' : '-'}{formatMoney((typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount))} VND</div>
+                                  <div className="tx-balance-after">{formatMoney(Number(tx.balanceAfter))} VND</div>
+                                </>
+                              ) : (
+                                <div className={`tx-amount ${tx.type.toLowerCase()}`}>{tx.type === 'INCOME' ? '+' : '-'}{formatMoney((typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount))} VND</div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <button className="icon-btn edit-tx-btn" title="Edit" onClick={() => {
+                                // open modal in edit mode
+                                setEditingTxId(tx._id);
+                                setIsModalOpen(true);
+                                setTxType(tx.type);
+                                setAmount((typeof tx.amount === 'string' ? Number(tx.amount) : tx.amount).toLocaleString('vi-VN'));
+                                setWalletId(tx.walletId?._id || '');
+                                setCategory(tx.category || (txType === 'EXPENSE' ? (categoryOptionsExpense[0]?.value ?? '') : (categoryOptionsIncome[0]?.value ?? '')));
+                                setDate(new Date(tx.date).toISOString().split('T')[0]);
+                                setNote(tx.note || '');
+                              }}>
+                                <Edit size={16} />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );

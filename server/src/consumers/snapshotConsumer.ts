@@ -15,6 +15,14 @@ const isTransientError = (err: any) => {
 
 async function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
+async function recoverStaleJobs(queue: any) {
+  try {
+    await queue.requeueStale(QUEUE_NAME, 10_000);
+  } catch (err) {
+    console.warn('[SnapshotConsumer] stale recovery failed', err);
+  }
+}
+
 async function runConsumer() {
   console.log('[SnapshotConsumer] starting');
   // ensure MongoDB connection so Mongoose queries won't buffer
@@ -32,8 +40,16 @@ async function runConsumer() {
   process.on('SIGINT', () => { console.log('[SnapshotConsumer] SIGINT'); running = false; });
   process.on('SIGTERM', () => { console.log('[SnapshotConsumer] SIGTERM'); running = false; });
 
+  await recoverStaleJobs(queue);
+  const requeueInterval = setInterval(() => {
+    recoverStaleJobs(queue).catch((e: any) => console.error('[SnapshotConsumer] requeueStale error', e));
+  }, 30_000);
+
   while (running) {
     try {
+      // recover jobs that were left in processing by a previous crash or timeout
+      await recoverStaleJobs(queue);
+
       // claim a job atomically (move to processing list) so crashes won't lose it
       const claimed = await queue.claim(QUEUE_NAME);
       if (!claimed) {
@@ -77,23 +93,15 @@ async function runConsumer() {
     }
   }
 
-    // periodically requeue stale processing items
-    const requeueInterval = setInterval(() => {
-      queue.requeueStale(QUEUE_NAME).catch((e: any) => console.error('[SnapshotConsumer] requeueStale error', e));
-    }, 30_000);
-
-    // wait for shutdown flag to be cleared by signals
-    while (running) await sleep(200);
-
-    clearInterval(requeueInterval);
-    try {
-      await mongoose.disconnect();
-      console.log('[SnapshotConsumer] disconnected MongoDB');
-    } catch (e) {
-      console.warn('[SnapshotConsumer] error disconnecting MongoDB', e);
-    }
-    console.log('[SnapshotConsumer] shutting down');
-    process.exit(0);
+  clearInterval(requeueInterval);
+  try {
+    await mongoose.disconnect();
+    console.log('[SnapshotConsumer] disconnected MongoDB');
+  } catch (e) {
+    console.warn('[SnapshotConsumer] error disconnecting MongoDB', e);
+  }
+  console.log('[SnapshotConsumer] shutting down');
+  process.exit(0);
 }
 
 if (require.main === module) {

@@ -6,15 +6,9 @@ import config from '../src/config';
 // Import models (require side-effect free model exports)
 import Wallet from '../src/models/Wallet';
 import Transaction from '../src/models/Transaction';
+import { CATEGORY_CATALOG } from '../src/constants/categoryCatalog';
 
-const walletIds = [
-  '6a99505a4816e1a84c6b1f84',
-  '6a9950614816e1a84c6b1f85',
-  '6a9950694816e1a84c6b1f86',
-  '6a9950784816e1a84c6b1f87',
-];
-
-const TOTAL = 2_000_000; // target transactions to generate
+const TOTAL = 250000; // target transactions to generate
 const BATCH_SIZE = 5000; // insert many per batch (tune for memory/perf)
 
 function randInt(min: number, max: number) {
@@ -22,10 +16,22 @@ function randInt(min: number, max: number) {
 }
 
 function randomAmount(): string {
-  // generate amount between 0.50 and 1000.00 with 2 decimals
-  const cents = randInt(50, 100000); // 0.50 to 1000.00
-  return (cents / 100).toFixed(2);
+  // generate integer amount (no fractional VND)
+  const amount = randInt(50, 100000);
+  return String(amount);
 }
+
+function randomCategory(type: 'INCOME' | 'EXPENSE') {
+  const items = CATEGORY_CATALOG.filter((category) => category.type === type);
+  return items[randInt(0, items.length - 1)]._id;
+}
+
+const walletIds = [
+  '6a9bb29ae44c09af8b6bec5f',
+  '6a9bb2d0e44c09af8b6bec60',
+  '6a9bb2d9e44c09af8b6bec61',
+  '6a9bb2e2e44c09af8b6bec62',
+];
 
 async function main() {
   console.log('Connecting to MongoDB', config.MONGO_URI);
@@ -94,7 +100,8 @@ async function main() {
           tenantId: tenantId,
           userId: userId,
           walletId: new mongoose.Types.ObjectId(id),
-          amount: mongoose.Types.Decimal128.fromString(amountDec.toFixed(2)),
+          category: randomCategory(type),
+          amount: mongoose.Types.Decimal128.fromString(amountDec.toFixed(0)),
           type,
           date,
           note: 'bulk-generated',
@@ -127,9 +134,9 @@ async function main() {
 
       // Update wallet.currentBalance to reflect netEffect
       const newBalance = new Decimal(String(wallet.currentBalance?.toString() ?? wallet.initialBalance?.toString() ?? '0')).plus(netEffect);
-      await Wallet.updateOne({ _id: wallet._id }, { $set: { currentBalance: mongoose.Types.Decimal128.fromString(newBalance.toFixed(2)), version: (wallet.version ?? 0) + 1 } });
+      await Wallet.updateOne({ _id: wallet._id }, { $set: { currentBalance: mongoose.Types.Decimal128.fromString(newBalance.toFixed(0)), version: (wallet.version ?? 0) + 1 } });
 
-      console.log(`\nDone wallet ${id}: inserted ${insertedForWallet}, netEffect ${netEffect.toFixed(2)}, newBalance ${newBalance.toFixed(2)}`);
+      console.log(`\nDone wallet ${id}: inserted ${insertedForWallet}, netEffect ${netEffect.toFixed(0)}, newBalance ${newBalance.toFixed(0)}`);
     }
 
     console.log('\nAll done. Total inserted:', totalInserted);

@@ -2,12 +2,16 @@ import express from 'express';
 import { authenticate } from '../middleware/auth';
 import * as controller from '../controllers/transactionController';
 
-const router = express.Router();
+const allTransactionsRouter = express.Router();
+const walletTransactionsRouter = express.Router();
 
-router.use(authenticate);
+allTransactionsRouter.use(authenticate);
+allTransactionsRouter.get('/transactions', controller.listTransactionsAcrossWallets);
 
-router.post('/:walletId/transactions', controller.createTransaction);
-router.patch('/:walletId/transactions/:transactionId', controller.editTransaction);
-router.get('/:walletId/transactions', controller.listTransactions);
+walletTransactionsRouter.use(authenticate);
+walletTransactionsRouter.post('/:walletId/transactions', controller.createTransaction);
+walletTransactionsRouter.patch('/:walletId/transactions/:transactionId', controller.editTransaction);
+walletTransactionsRouter.get('/:walletId/transactions', controller.listTransactions);
 
-export default router;
+export { allTransactionsRouter, walletTransactionsRouter };
+export default walletTransactionsRouter;
