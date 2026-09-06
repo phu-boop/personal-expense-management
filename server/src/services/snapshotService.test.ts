@@ -84,4 +84,46 @@ describe('snapshotService', () => {
     assert.equal(snapshot.balance.toString(), '1250.00'); // 1000 +100 -50 +200
     assert.equal(snapshot.lastTransactionId.toString(), checkpointTx._id.toString());
   });
+
+  it('accepts string tenantIds when matching transactions and snapshots', async () => {
+    const tenantId = new mongoose.Types.ObjectId();
+    const userId = new mongoose.Types.ObjectId();
+
+    const wallet = await Wallet.create({
+      tenantId,
+      userId,
+      name: 'Main',
+      initialBalance: toDecimal128('1000'),
+      initialBalanceDate: new Date('2026-01-01T00:00:00.000Z'),
+      currentBalance: toDecimal128('1000'),
+      version: 0,
+    });
+
+    await Transaction.create({
+      tenantId,
+      userId,
+      walletId: wallet._id,
+      amount: toDecimal128('100'),
+      type: TransactionType.INCOME,
+      date: new Date('2026-01-02T00:00:00.000Z'),
+    });
+
+    const checkpointTx = await Transaction.create({
+      tenantId,
+      userId,
+      walletId: wallet._id,
+      amount: toDecimal128('50'),
+      type: TransactionType.EXPENSE,
+      date: new Date('2026-01-02T01:00:00.000Z'),
+    });
+
+    const snapshot = await SnapshotService.createSnapshot(wallet._id, {
+      date: checkpointTx.date,
+      createdAt: checkpointTx.createdAt,
+      id: checkpointTx._id,
+    } as any, tenantId.toHexString());
+
+    assert.equal(snapshot.balance.toString(), '1050.00');
+    assert.equal(snapshot.lastTransactionId.toString(), checkpointTx._id.toString());
+  });
 });

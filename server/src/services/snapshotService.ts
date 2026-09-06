@@ -25,8 +25,9 @@ class SnapshotService {
     tenantId?: mongoose.Types.ObjectId | string,
   ) {
     const walletObjectId = typeof walletId === 'string' ? new mongoose.Types.ObjectId(walletId) : walletId;
+    const normalizedTenantId = tenantId ? (typeof tenantId === 'string' ? new mongoose.Types.ObjectId(tenantId) : tenantId) : undefined;
 
-    const wallet = await Wallet.findOne({ _id: walletObjectId, ...(tenantId ? { tenantId } : {}) }).lean();
+    const wallet = await Wallet.findOne({ _id: walletObjectId, ...(normalizedTenantId ? { tenantId: normalizedTenantId } : {}) }).lean();
 
     if (!wallet) {
       throw new Error('Wallet not found');
@@ -57,7 +58,7 @@ class SnapshotService {
 
     // Ensure we only sum transactions for this wallet (and tenant if provided)
     const match: any = { walletId: walletObjectId };
-    if (tenantId) match.tenantId = tenantId;
+    if (normalizedTenantId) match.tenantId = normalizedTenantId;
 
     // Aggregate sum of effects up to and including the checkpoint
     const pipeline = [
@@ -85,7 +86,6 @@ class SnapshotService {
     // Convert wallet.initialBalance and totalRaw to Decimal for accurate math
     const initial = toDecimal(wallet.initialBalance ?? 0);
     const total = toDecimal(totalRaw);
-
     const balance = initial.plus(total);
 
     // Insert snapshot (append-only semantics)
@@ -93,7 +93,7 @@ class SnapshotService {
     // If any transaction for this wallet was updated after we started, treat as transient so the consumer can retry.
     const concurrentEditExists = await Transaction.exists({
       walletId: walletObjectId,
-      ...(tenantId ? { tenantId } : {}),
+      ...(normalizedTenantId ? { tenantId: normalizedTenantId } : {}),
       updatedAt: { $gt: startTime },
     });
 
@@ -105,7 +105,7 @@ class SnapshotService {
     // Also detect concurrent snapshot invalidation or snapshot writes
     const concurrentSnapshotChange = await BalanceSnapshot.exists({
       walletId: walletObjectId,
-      ...(tenantId ? { tenantId } : {}),
+      ...(normalizedTenantId ? { tenantId: normalizedTenantId } : {}),
       updatedAt: { $gt: startTime },
     });
 
@@ -128,7 +128,7 @@ class SnapshotService {
     const now = new Date();
     const updateOnInsert = {
       $setOnInsert: {
-        tenantId: tenantId ?? wallet.tenantId,
+        tenantId: normalizedTenantId ?? wallet.tenantId,
         walletId: walletObjectId,
         snapshotAt: now,
         balance: toDecimal128(balance),

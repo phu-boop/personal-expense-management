@@ -27,11 +27,12 @@ function randomCategory(type: 'INCOME' | 'EXPENSE') {
 }
 
 const walletIds = [
-  '6a9bb29ae44c09af8b6bec5f',
-  '6a9bb2d0e44c09af8b6bec60',
-  '6a9bb2d9e44c09af8b6bec61',
-  '6a9bb2e2e44c09af8b6bec62',
+  '6a9d0be8bb1f8eafa94537eb',
+  '6a9d0bf2bb1f8eafa94537ec',
+  '6a9d0bfbbb1f8eafa94537ed',
+  '6a9d0c03bb1f8eafa94537ee'
 ];
+
 
 async function main() {
   console.log('Connecting to MongoDB', config.MONGO_URI);

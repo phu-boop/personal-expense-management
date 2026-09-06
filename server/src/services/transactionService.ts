@@ -440,9 +440,15 @@ export async function createTransactionWithInvalidation(
 // Enqueue snapshot job after commit (best-effort, non-blocking)
 async function enqueueSnapshotJob(walletId: mongoose.Types.ObjectId, tenantId?: mongoose.Types.ObjectId) {
   try {
+    const payload = { walletId, tenantId };
+    console.log('[transactionService] enqueue snapshot-check job', {
+      walletId: walletId?.toString?.() ?? walletId,
+      tenantId: tenantId?.toString?.() ?? tenantId,
+      payload,
+    });
     const { createRedisQueueFromEnvironment } = await import('./redisQueue');
     const queue = await createRedisQueueFromEnvironment();
-    await queue.enqueue('snapshot-check', { walletId, tenantId });
+    await queue.enqueue('snapshot-check', payload);
   } catch (err) {
     console.warn('[transactionService] failed to enqueue snapshot-check job', err);
   }
