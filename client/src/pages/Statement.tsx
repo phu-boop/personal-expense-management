@@ -20,6 +20,7 @@ interface Transaction {
   type: 'INCOME' | 'EXPENSE';
   amount: number;
   category: string;
+  categoryName?: string;
   date: string;
   note?: string;
   balanceAfter: number;
@@ -80,6 +81,7 @@ const Statement: React.FC = () => {
   });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -140,7 +142,24 @@ const Statement: React.FC = () => {
     }
   };
 
-  const fetchStatementForWallet = async (wid?: string, cursorOverride?: string | null, append = false) => {
+  const fetchCategories = async () => {
+    try {
+      const res = await services.categories.list();
+      const categories = Array.isArray(res.data?.categories) ? res.data.categories : [];
+      const nextMap: Record<string, string> = {};
+      categories.forEach((c: any) => {
+        if (c?._id) nextMap[String(c._id)] = String(c.name ?? c._id);
+      });
+      setCategoryMap(nextMap);
+      return nextMap;
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      setCategoryMap({});
+      return {} as Record<string, string>;
+    }
+  };
+
+  const fetchStatementForWallet = async (wid?: string, cursorOverride?: string | null, append = false, categoryLookup: Record<string, string> = categoryMap) => {
     console.debug('fetchStatementForWallet: start', { walletId: wid, append, cursorOverride });
     try {
       if (append) {
@@ -160,7 +179,10 @@ const Statement: React.FC = () => {
       console.debug('fetchStatementForWallet: raw', statementRes);
 
       const normalized = normalizeStatementResponse(statementRes.data ?? {});
-      const payloadTransactions = normalized.transactions as Transaction[];
+      const payloadTransactions = (normalized.transactions as any[]).map((tx: any) => ({
+        ...tx,
+        categoryName: categoryLookup[String(tx.category)] ?? tx.categoryName ?? tx.category ?? 'Uncategorized',
+      })) as Transaction[];
 
       if (append) {
         setTransactions((prev) => [...prev, ...payloadTransactions]);
@@ -193,16 +215,17 @@ const Statement: React.FC = () => {
   const fetchAll = async () => {
     try {
       const walletList = await fetchWallets();
+      const categories = await fetchCategories();
       if (!walletId && walletList.length > 0) {
         const firstId = String(walletList[0]._id ?? walletList[0].id ?? '');
         if (firstId) {
           console.debug('fetchAll: defaulting walletId to', firstId);
           setWalletId(firstId);
-          await fetchStatementForWallet(firstId, null, false);
+          await fetchStatementForWallet(firstId, null, false, categories);
           return;
         }
       }
-      await fetchStatementForWallet(walletId, null, false);
+      await fetchStatementForWallet(walletId, null, false, categories);
     } finally {
       setIsLoading(false);
     }
@@ -405,24 +428,35 @@ const Statement: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map(tx => (
-                  <tr key={tx._id}>
-                    <td data-label="Date" className="tx-date-col">{new Date(tx.date).toLocaleDateString()}</td>
-                    <td data-label="Description">
-                      <div className="tx-desc">{tx.note || tx.category}</div>
-                      <div className="tx-cat">{tx.category}</div>
-                    </td>
-                    <td data-label="Income" className="right-align income-col">
-                      {tx.type === 'INCOME' ? `+${formatMoney(tx.amount)} VND` : '-'}
-                    </td>
-                    <td data-label="Expense" className="right-align expense-col">
-                      {tx.type === 'EXPENSE' ? `-${formatMoney(tx.amount)} VND` : '-'}
-                    </td>
-                    <td data-label="Balance" className="right-align balance-col">
-                      {formatMoney(tx.balanceAfter)} VND
-                    </td>
-                  </tr>
-                ))}
+                {transactions.map(tx => {
+                  const txDate = new Date(tx.date);
+                  const displayDate = txDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  const displayTime = txDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+                  return (
+                    <tr key={tx._id}>
+                      <td data-label="Date" className="tx-date-col">
+                        <div className="statement-date-stack">
+                          <span>{displayDate}</span>
+                          <span className="statement-time">{displayTime}</span>
+                        </div>
+                      </td>
+                      <td data-label="Description">
+                        <div className="tx-desc">{tx.note || tx.categoryName || 'Uncategorized'}</div>
+                        <div className="tx-cat">{tx.categoryName || 'Uncategorized'}</div>
+                      </td>
+                      <td data-label="Income" className="right-align income-col">
+                        {tx.type === 'INCOME' ? `+${formatMoney(tx.amount)} VND` : '-'}
+                      </td>
+                      <td data-label="Expense" className="right-align expense-col">
+                        {tx.type === 'EXPENSE' ? `-${formatMoney(tx.amount)} VND` : '-'}
+                      </td>
+                      <td data-label="Balance" className="right-align balance-col">
+                        {formatMoney(tx.balanceAfter)} VND
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 

@@ -44,6 +44,7 @@ const Transactions: React.FC = () => {
   type CategoryOption = { value: string; label: string };
 
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [filterWallet, setFilterWallet] = useState(paramWalletId);
   const [filterCategory, setFilterCategory] = useState('');
@@ -92,7 +93,16 @@ const Transactions: React.FC = () => {
       const res = await services.categories.list();
       const list = Array.isArray(res.data?.categories) ? res.data.categories : [];
       const mapped: CategoryOption[] = list.map((c: any) => ({ value: String(c._id), label: String(c.name) }));
+      const nextMap: Record<string, string> = {};
+
+      list.forEach((c: any) => {
+        if (c?._id) {
+          nextMap[String(c._id)] = String(c.name ?? c._id);
+        }
+      });
+
       setCategoryOptions(mapped);
+      setCategoryMap(nextMap);
 
       if (mapped.length > 0 && !category) {
         setCategory(mapped.find((c: CategoryOption) => c.label === 'Food & Drink')?.value ?? mapped[0].value);
@@ -102,13 +112,17 @@ const Transactions: React.FC = () => {
         const preferred = mapped.filter((c: CategoryOption) => c.value !== '').find((c: CategoryOption) => c.label === (txType === 'EXPENSE' ? 'Food & Drink' : 'Salary')) ?? mapped[0];
         setCategory(preferred.value);
       }
+
+      return nextMap;
     } catch (error) {
       console.error('Failed to fetch categories:', error);
       setCategoryOptions([]);
+      setCategoryMap({});
+      return {} as Record<string, string>;
     }
   };
 
-  const fetchData = async (append = false, cursor?: string | null) => {
+  const fetchData = async (append = false, cursor?: string | null, categoryLookup: Record<string, string> = categoryMap) => {
     if (!append) setIsLoading(true);
     setIsLoadingMore(append);
 
@@ -154,8 +168,10 @@ const Transactions: React.FC = () => {
 
       const normalizedTxs = combinedTxs.map((tx: any) => {
         const wid = typeof tx.walletId === 'string' ? tx.walletId : (tx.walletId?._id ?? tx.walletId);
+        const categoryId = typeof tx.category === 'string' ? tx.category : tx.category?._id ?? '';
         return {
           ...tx,
+          categoryName: categoryLookup[String(categoryId)] ?? tx.categoryName ?? (categoryId ? 'Uncategorized' : 'Uncategorized'),
           walletId: typeof wid === 'string' ? { _id: wid, name: walletNameMap[wid] ?? (typeof tx.walletId === 'object' ? tx.walletId.name : '') } : tx.walletId,
         } as Transaction;
       });
@@ -203,8 +219,8 @@ const Transactions: React.FC = () => {
         setWalletId(defaultWalletId);
       }
 
-      await fetchCategories();
-      fetchData(false, null);
+      const categories = await fetchCategories();
+      fetchData(false, null, categories);
     };
 
     void initialize();
@@ -376,7 +392,7 @@ const Transactions: React.FC = () => {
             <span style={{ marginLeft: 8 }}>{formatMoney(Number(openingBalance))} VND</span>
           </div>
         )}
-        <div className="list-toolbar">
+        <div className="list-toolbar compact-filters">
           <div className="search-box">
             <Search size={18} className="search-icon" />
             <input
@@ -387,41 +403,48 @@ const Transactions: React.FC = () => {
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="filters">
-            <CustomSelect
-              value={filterWallet}
-              onChange={setFilterWallet}
-              options={[{value: '', label: 'All Wallets'}, ...walletOptions]}
-              placeholder="All Wallets"
-              style={{ minWidth: '150px' }}
-            />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>From</label>
-                <div style={{ width: 160 }}>
-                  <CustomDatePicker value={rangeFrom ?? ''} onChange={(v) => setRangeFrom(v || null)} placeholder="From" />
-                </div>
-              </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>To</label>
-                <div style={{ width: 160 }}>
-                  <CustomDatePicker value={rangeTo ?? ''} onChange={(v) => setRangeTo(v || null)} placeholder="To" />
-                </div>
-              </div>
+          <div className="filter-cluster">
+            <div className="filter-control filter-category">
+              <CustomSelect
+                value={filterCategory}
+                onChange={setFilterCategory}
+                options={[{value: '', label: 'All Categories'}, ...uniqueCategories]}
+                placeholder="All Categories"
+                style={{ minWidth: '180px' }}
+              />
+            </div>
 
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button className="btn-secondary" onClick={() => fetchData(false, null)}>Apply</button>
-                <button className="btn-secondary" onClick={() => { setRangeFrom(null); setRangeTo(null); fetchData(false, null); }}>Clear</button>
+            <div className="filter-control filter-wallet">
+              <CustomSelect
+                value={filterWallet}
+                onChange={setFilterWallet}
+                options={[{value: '', label: 'All Wallets'}, ...walletOptions]}
+                placeholder="All Wallets"
+                style={{ minWidth: '170px' }}
+              />
+            </div>
+          </div>
+
+          <div className="date-filter-group-wrap">
+            <div className="date-filter-group">
+              <label>From</label>
+              <div className="date-picker-shell">
+                <CustomDatePicker value={rangeFrom ?? ''} onChange={(v) => setRangeFrom(v || null)} placeholder="From" />
               </div>
             </div>
-            <CustomSelect
-              value={filterCategory}
-              onChange={setFilterCategory}
-              options={[{value: '', label: 'All Categories'}, ...uniqueCategories]}
-              placeholder="All Categories"
-              style={{ minWidth: '150px' }}
-            />
+
+            <div className="date-filter-group">
+              <label>To</label>
+              <div className="date-picker-shell">
+                <CustomDatePicker value={rangeTo ?? ''} onChange={(v) => setRangeTo(v || null)} placeholder="To" />
+              </div>
+            </div>
+
+            <div className="toolbar-actions">
+              <button className="btn-secondary" onClick={() => fetchData(false, null)}>Apply</button>
+              <button className="btn-secondary" onClick={() => { setRangeFrom(null); setRangeTo(null); fetchData(false, null); }}>Clear</button>
+            </div>
           </div>
         </div>
 

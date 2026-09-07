@@ -65,10 +65,25 @@ export default class LocalFilesystemStorage implements StorageAdapter {
     try {
       await new Promise<void>((resolve, reject) => {
         const out = fs.createWriteStream(filePath, { flags: 'w', mode: 0o666 });
-        data.pipe(out);
-        out.on('finish', () => resolve());
+        let bytesWritten = 0;
+        out.on('drain', () => {
+          console.log('[DIAG] storage drain', { filePath, bytesWritten });
+        });
+        out.on('pipe', (src) => {
+          console.log('[DIAG] storage pipe started', { filePath });
+        });
+        out.on('finish', () => {
+          console.log('[DIAG] storage finished', { filePath, bytesWritten });
+          resolve();
+        });
         out.on('error', (err) => reject(err));
+        (data as NodeJS.ReadableStream).on('data', (chunk) => {
+          try {
+            bytesWritten += (chunk as Buffer).length ?? 0;
+          } catch (_) {}
+        });
         (data as NodeJS.ReadableStream).on('error', (err) => reject(err));
+        data.pipe(out);
       });
 
       return { fileKey: filePath };
@@ -80,10 +95,25 @@ export default class LocalFilesystemStorage implements StorageAdapter {
         const fallbackPath = path.join(fallback, fileName);
         await new Promise<void>((resolve, reject) => {
           const out = fs.createWriteStream(fallbackPath, { flags: 'w', mode: 0o666 });
-          data.pipe(out);
-          out.on('finish', () => resolve());
+          let bytesWritten = 0;
+          out.on('drain', () => {
+            console.log('[DIAG] storage drain (fallback)', { fallbackPath, bytesWritten });
+          });
+          out.on('pipe', (src) => {
+            console.log('[DIAG] storage pipe started (fallback)', { fallbackPath });
+          });
+          out.on('finish', () => {
+            console.log('[DIAG] storage finished (fallback)', { fallbackPath, bytesWritten });
+            resolve();
+          });
           out.on('error', (err) => reject(err));
+          (data as NodeJS.ReadableStream).on('data', (chunk) => {
+            try {
+              bytesWritten += (chunk as Buffer).length ?? 0;
+            } catch (_) {}
+          });
           (data as NodeJS.ReadableStream).on('error', (err) => reject(err));
+          data.pipe(out);
         });
 
         return { fileKey: fallbackPath };

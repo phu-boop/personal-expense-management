@@ -236,6 +236,19 @@
   font-size: var(--text-sm);
 }
 
+.statement-date-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  line-height: 1.25;
+}
+
+.statement-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .tx-desc {
   font-weight: 500;
   color: var(--text-primary);
