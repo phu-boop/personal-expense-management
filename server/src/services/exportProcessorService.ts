@@ -127,15 +127,6 @@ async function mergePdfFiles(inputFiles: string[], outputFile: string): Promise<
   });
 
   const durationMs = Date.now() - start;
-  console.log('[DIAG] pdf merge finished', {
-    executable,
-    inputCount: inputFiles.length,
-    outputFile,
-    durationMs,
-    exitCode,
-    stdoutLength: stdout.length,
-    stderrLength: stderr.length,
-  });
 
   if (exitCode !== 0) {
     throw new Error(`pdf merge failed with exit code ${exitCode}: ${stderr || stdout || 'unknown error'}`);
@@ -154,9 +145,7 @@ async function mergePdfFiles(inputFiles: string[], outputFile: string): Promise<
 
 // Helper: compute opening balance (reuse statement semantics)
 async function computeOpeningBalance(tenantId: mongoose.Types.ObjectId, userId: mongoose.Types.ObjectId, walletId: mongoose.Types.ObjectId, from: Date) {
-  console.log('DIAG: computeOpeningBalance lookup', { tenantId: String(tenantId), userId: String(userId), walletId: String(walletId), from: from.toISOString() });
   const wallet = await Wallet.findOne({ _id: walletId, tenantId, userId }).lean();
-  console.log('DIAG: computeOpeningBalance found wallet?', !!wallet);
   if (!wallet) throw new Error('wallet not found');
 
   const pageStartCandidate = { date: from, createdAt: new Date(0), _id: new mongoose.Types.ObjectId('000000000000000000000000') };
@@ -449,10 +438,8 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
             await finishCurrentChunk(false);
           }
 
-          if (seen % 10000 === 0) {
-            const mem = process.memoryUsage();
-            console.log('[DIAG] pdf chunk progress', { jobId: String(jobId), seen, heapUsed: mem.heapUsed, chunkRows });
-            if ((global as any).gc) { (global as any).gc(); }
+          if (seen % 10000 === 0 && (global as any).gc) {
+            (global as any).gc();
           }
         }
 
@@ -467,17 +454,7 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
         }
 
         const finalPdfPath = path.join(chunkDir, `statement-${String(jobId)}.pdf`);
-        const mergeStart = Date.now();
         await mergePdfFiles(chunkFiles, finalPdfPath);
-        console.log('[DIAG] pdf merge complete', {
-          jobId: String(jobId),
-          finalPdfSize: (await fs.promises.stat(finalPdfPath)).size,
-          chunkCount: chunkFiles.length,
-          chunkPageCounts,
-          totalPages: totalPdfPages,
-          sumChunkPages: sumChunkPageCounts(chunkPageCounts),
-          durationMs: Date.now() - mergeStart,
-        });
 
         const res = await storage.put(`statement-${String(jobId)}.pdf`, fs.createReadStream(finalPdfPath));
         try { fs.unlinkSync(finalPdfPath); } catch {}
@@ -488,14 +465,6 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
         const finalPageTotal = sumChunkPageCounts(chunkPageCounts);
         job.pages = finalPageTotal;
         job.totalPages = finalPageTotal;
-        console.log('[DIAG] pdf page totals finalized', {
-          jobId: String(jobId),
-          chunkCount: chunkFiles.length,
-          chunkPageCounts,
-          sumChunkPages: finalPageTotal,
-          pages: job.pages,
-          totalPages: job.totalPages,
-        });
         job.status = ExportJobStatus.COMPLETED;
         await job.save();
         return;
@@ -579,9 +548,9 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
           ]).commit();
 
           if (seen % 10000 === 0 || seen === 100000 || seen === 200000 || seen === 500000 || seen === 1000000) {
-            const mem = process.memoryUsage();
-            console.log('[DIAG] xlsx progress', { jobId: String(jobId), seen, rss: mem.rss, heapUsed: mem.heapUsed });
-            if ((global as any).gc) { (global as any).gc(); const mem2 = process.memoryUsage(); console.log('[DIAG] xlsx after gc', { seen, heapUsedAfterGc: mem2.heapUsed }); }
+            if ((global as any).gc) {
+              (global as any).gc();
+            }
           }
         }
       }

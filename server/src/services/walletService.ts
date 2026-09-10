@@ -25,6 +25,7 @@ export interface WalletQueryResult {
   name: string;
   accountNumber?: string;
   initialBalance: mongoose.Types.Decimal128;
+  initialBalanceDate: Date;
   currentBalance: mongoose.Types.Decimal128;
   version: number;
   createdAt: Date;
@@ -77,7 +78,7 @@ export async function listWalletsForUser(input: ListWalletsInput) {
   const { tenantId, userId, limit, cursor } = input;
   const decodedCursor = decodeCursor(cursor);
 
-  const baseQuery: mongoose.FilterQuery<repo.WalletQueryResult> = { tenantId, userId };
+  const baseQuery: Record<string, any> = { tenantId, userId };
   const query = decodedCursor
     ? { ...baseQuery, $or: [{ createdAt: { $lt: decodedCursor.createdAt } }, { createdAt: decodedCursor.createdAt, _id: { $lt: decodedCursor._id } }] }
     : baseQuery;

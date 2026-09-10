@@ -8,6 +8,7 @@ export type WalletQueryResult = {
   name: string;
   accountNumber?: string;
   initialBalance: mongoose.Types.Decimal128;
+  initialBalanceDate: Date;
   currentBalance: mongoose.Types.Decimal128;
   version: number;
   createdAt: Date;
@@ -19,7 +20,7 @@ export async function insertWallet(doc: Partial<WalletQueryResult>) {
   return created.toObject() as WalletQueryResult;
 }
 
-export async function findWallets(query: mongoose.FilterQuery<unknown>, limit: number) {
+export async function findWallets(query: Record<string, any>, limit: number) {
   return Wallet.find<WalletQueryResult>(query).sort({ createdAt: -1, _id: -1 }).limit(limit + 1).lean();
 }
 
