@@ -6,8 +6,8 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 
-import Wallet from '../models/Wallet';
-import Transaction from '../models/Transaction';
+import Wallet from '../../../src/models/Wallet';
+import Transaction from '../../../src/models/Transaction';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key-for-transaction-api-1234567890';
 
@@ -39,8 +39,8 @@ describe('Transaction API', () => {
     tenantId = new mongoose.Types.ObjectId().toHexString();
     token = buildToken(userId, tenantId);
 
-    const { default: transactionRouter, allTransactionsRouter } = await import('../routes/transaction');
-    const categoryRoutes = (await import('../routes/category')).default;
+    const { default: transactionRouter, allTransactionsRouter } = await import('../../../src/routes/transaction');
+    const categoryRoutes = (await import('../../../src/routes/category')).default;
 
     app = express();
     app.use(express.json());

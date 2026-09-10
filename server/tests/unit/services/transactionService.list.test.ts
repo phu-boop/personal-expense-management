@@ -3,11 +3,11 @@ import { before, beforeEach, describe, it, after } from 'node:test';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import Wallet from '../models/Wallet';
-import Transaction, { TransactionType } from '../models/Transaction';
-import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
-import { toDecimal128, toDecimal } from '../utils/money';
-import { listTransactions } from './transactionService.list';
+import Wallet from '../../../src/models/Wallet';
+import Transaction, { TransactionType } from '../../../src/models/Transaction';
+import BalanceSnapshot, { BalanceSnapshotStatus } from '../../../src/models/BalanceSnapshot';
+import { toDecimal128, toDecimal } from '../../../src/utils/money';
+import { listTransactions } from '../../../src/services/transactionService.list';
 
 describe('transactionService.list - openingBalance with snapshots', () => {
   let mongoServer: MongoMemoryServer;

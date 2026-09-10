@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ExportJob } from '../models/ExportJob';
-import { sumChunkPageCounts } from './exportProcessorService';
+import { ExportJob } from '../../../src/models/ExportJob';
+import { sumChunkPageCounts } from '../../../src/services/exportProcessorService';
 
 test('export job tracks PDF page totals across chunked exports', () => {
   const pagesPath = ExportJob.schema.path('pages');

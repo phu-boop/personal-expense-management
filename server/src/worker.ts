@@ -11,7 +11,7 @@ import path from 'node:path';
 
 import config from './config';
 const EXPORT_DIR = path.resolve(process.cwd(), config.EXPORT_DIR);
-const MAX_RETRIES = 3;
+const MAX_RETRIES = config.EXPORT_JOB_MAX_RETRIES;
 const workerMetrics = createWorkerMetrics();
 
 const ensureExportDirectory = async () => {
@@ -129,11 +129,11 @@ const startWorker = async () => {
   const poll = async () => {
     const handled = await processNextJob(queue);
     if (handled) {
-      setTimeout(poll, 1000);
+      setTimeout(poll, config.EXPORT_JOB_POLL_MS);
       return;
     }
 
-    setTimeout(poll, 2000);
+    setTimeout(poll, config.EXPORT_JOB_IDLE_POLL_MS);
   };
 
   poll();

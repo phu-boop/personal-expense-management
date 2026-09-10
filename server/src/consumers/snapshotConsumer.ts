@@ -5,7 +5,7 @@ import { createRedisQueueFromEnvironment } from '../services/redisQueue';
 import { createSnapshotIfNeeded } from '../workers/snapshotWorker';
 
 const QUEUE_NAME = 'snapshot-check';
-const MAX_RETRIES = 5;
+const MAX_RETRIES = config.SNAPSHOT_MAX_RETRIES;
 
 const isTransientError = (err: any) => {
   if (!err) return false;
@@ -17,7 +17,7 @@ async function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms));
 
 async function recoverStaleJobs(queue: any) {
   try {
-    await queue.requeueStale(QUEUE_NAME, 10_000);
+    await queue.requeueStale(QUEUE_NAME, config.SNAPSHOT_STALE_JOB_MS);
   } catch (err) {
     console.warn('[SnapshotConsumer] stale recovery failed', err);
   }
@@ -43,7 +43,7 @@ async function runConsumer() {
   await recoverStaleJobs(queue);
   const requeueInterval = setInterval(() => {
     recoverStaleJobs(queue).catch((e: any) => console.error('[SnapshotConsumer] requeueStale error', e));
-  }, 30_000);
+  }, config.SNAPSHOT_REQUEUE_INTERVAL_MS);
 
   while (running) {
     try {
@@ -53,7 +53,7 @@ async function runConsumer() {
       // claim a job atomically (move to processing list) so crashes won't lose it
       const claimed = await queue.claim(QUEUE_NAME);
       if (!claimed) {
-        await sleep(500);
+        await sleep(config.SNAPSHOT_CLAIM_POLL_MS);
         continue;
       }
 
@@ -80,7 +80,7 @@ async function runConsumer() {
           await queue.enqueueDeadLetter(QUEUE_NAME, { ...job, retries, failedAt: new Date().toISOString(), error: String(err?.message ?? err) });
           await queue.ack(QUEUE_NAME, raw);
         } else {
-          const backoffMs = 1000 * Math.pow(2, retries - 1);
+          const backoffMs = config.SNAPSHOT_RETRY_BASE_MS * Math.pow(2, retries - 1);
           console.log(`[SnapshotConsumer] transient error, retry=${retries}, backoff=${backoffMs}ms`);
           await sleep(backoffMs);
           await queue.enqueue(QUEUE_NAME, { ...job, retries });
@@ -89,7 +89,7 @@ async function runConsumer() {
       }
     } catch (err) {
       console.error('[SnapshotConsumer] fatal loop error', err);
-      await sleep(2000);
+      await sleep(config.SNAPSHOT_FATAL_RETRY_MS);
     }
   }
 

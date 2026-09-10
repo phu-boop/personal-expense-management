@@ -42,7 +42,7 @@ describe('Wallet API', () => {
     tokenForUser1 = buildToken(userId1, tenantId1);
     tokenForUser2 = buildToken(userId2, tenantId2);
 
-    const { default: walletRouter } = await import('../routes/wallet');
+    const { default: walletRouter } = await import('../../../src/routes/wallet');
 
     app = express();
     app.use(express.json());

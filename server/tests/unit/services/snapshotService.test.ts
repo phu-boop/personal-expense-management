@@ -4,10 +4,10 @@ import mongoose from 'mongoose';
 import Decimal from 'decimal.js';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import Wallet from '../models/Wallet';
-import Transaction, { TransactionType } from '../models/Transaction';
-import { toDecimal128 } from '../utils/money';
-import SnapshotService from './snapshotService';
+import Wallet from '../../../src/models/Wallet';
+import Transaction, { TransactionType } from '../../../src/models/Transaction';
+import { toDecimal128 } from '../../../src/utils/money';
+import SnapshotService from '../../../src/services/snapshotService';
 
 describe('snapshotService', () => {
   let mongoServer: MongoMemoryServer;

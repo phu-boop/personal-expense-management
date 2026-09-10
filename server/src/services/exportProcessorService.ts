@@ -23,6 +23,12 @@ export type ExportJobInput = {
   storage: StorageAdapter;
 };
 
+const PDF_MAX_ROWS_PER_CHUNK = Number(process.env.EXPORT_PDF_MAX_ROWS_PER_CHUNK ?? 2500);
+const XLSX_PROGRESS_CHECKPOINTS = (process.env.EXPORT_XLSX_PROGRESS_CHECKPOINTS ?? '10000,100000,200000,500000,1000000')
+  .split(',')
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isFinite(value) && value > 0);
+
 const formatDisplayDate = (value: Date | string | undefined | null) => {
   if (!value) return 'N/A';
   const date = value instanceof Date ? value : new Date(value);
@@ -244,7 +250,7 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
       const chunkFiles: string[] = [];
       const chunkPageCounts: number[] = [];
       let totalPdfPages = 0;
-      const maxRowsPerChunk = 2500;
+      const maxRowsPerChunk = PDF_MAX_ROWS_PER_CHUNK;
 
       const applyFont = (doc: any) => {
         const candidateFonts = [
@@ -547,7 +553,7 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
             Number(after.toFixed(2)),
           ]).commit();
 
-          if (seen % 10000 === 0 || seen === 100000 || seen === 200000 || seen === 500000 || seen === 1000000) {
+          if (XLSX_PROGRESS_CHECKPOINTS.includes(seen) || seen % 10_000 === 0) {
             if ((global as any).gc) {
               (global as any).gc();
             }

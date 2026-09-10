@@ -2,8 +2,9 @@ import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
 import SnapshotService from '../services/snapshotService';
+import config from '../config';
 
-const DEFAULT_SNAPSHOT_INTERVAL = 1;
+const DEFAULT_SNAPSHOT_INTERVAL = config.SNAPSHOT_DEFAULT_INTERVAL;
 
 /**
  * Check the latest VALID snapshot for the wallet and create a new snapshot

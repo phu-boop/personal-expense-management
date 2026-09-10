@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { before, beforeEach, after, afterEach, describe, it } from 'node:test';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import Transaction, { TransactionType } from '../models/Transaction';
-import Wallet from '../models/Wallet';
-import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
-import StatementService from './statementService';
-import { toDecimal128 } from '../utils/money';
-import SnapshotService from './snapshotService';
+import Transaction, { TransactionType } from '../../../src/models/Transaction';
+import Wallet from '../../../src/models/Wallet';
+import BalanceSnapshot, { BalanceSnapshotStatus } from '../../../src/models/BalanceSnapshot';
+import StatementService from '../../../src/services/statementService';
+import { toDecimal128 } from '../../../src/utils/money';
+import SnapshotService from '../../../src/services/snapshotService';
 
 describe('StatementService', () => {
   let mongoServer: MongoMemoryServer;

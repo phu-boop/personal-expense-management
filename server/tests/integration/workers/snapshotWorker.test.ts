@@ -3,10 +3,10 @@ import { before, beforeEach, describe, it, after } from 'node:test';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import Wallet from '../models/Wallet';
-import Transaction, { TransactionType } from '../models/Transaction';
-import { toDecimal128 } from '../utils/money';
-import { createSnapshotIfNeeded } from './snapshotWorker';
+import Wallet from '../../../src/models/Wallet';
+import Transaction, { TransactionType } from '../../../src/models/Transaction';
+import { toDecimal128 } from '../../../src/utils/money';
+import { createSnapshotIfNeeded } from '../../../src/workers/snapshotWorker';
 
 describe('snapshotWorker', () => {
   let mongoServer: MongoMemoryServer;

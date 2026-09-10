@@ -4,11 +4,11 @@ import mongoose from 'mongoose';
 import Decimal from 'decimal.js';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import Wallet from '../models/Wallet';
-import Transaction, { TransactionType } from '../models/Transaction';
-import BalanceSnapshot, { BalanceSnapshotStatus } from '../models/BalanceSnapshot';
-import { createTransaction, editTransaction, InsufficientBalanceError } from './transactionService';
-import { toDecimal, toDecimal128 } from '../utils/money';
+import Wallet from '../../../src/models/Wallet';
+import Transaction, { TransactionType } from '../../../src/models/Transaction';
+import BalanceSnapshot, { BalanceSnapshotStatus } from '../../../src/models/BalanceSnapshot';
+import { createTransaction, editTransaction, InsufficientBalanceError } from '../../../src/services/transactionService';
+import { toDecimal, toDecimal128 } from '../../../src/utils/money';
 
 describe('transactionService', () => {
   let mongoServer: MongoMemoryServer;
