@@ -8,7 +8,7 @@ import User from '../models/User';
 const GOOGLE_CLIENT_ID = config.GOOGLE_CLIENT_ID?.trim();
 const JWT_SECRET = config.JWT_SECRET?.trim();
 
-if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.includes('your-google-client-id-here') || GOOGLE_CLIENT_ID.includes('demo-google-client-id')) {
+if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.includes('your-google-client-id-here')) {
   console.warn('Google OAuth is not configured. Set GOOGLE_CLIENT_ID and VITE_GOOGLE_CLIENT_ID with a real client ID before sign-in works.');
 }
 

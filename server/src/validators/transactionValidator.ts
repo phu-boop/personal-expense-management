@@ -60,9 +60,6 @@ export const parseAmount = (value: unknown) => {
   if (!dec.isFinite() || dec.isNaN() || !dec.isPositive()) throw new Error('amount must be a positive decimal');
   return dec;
 };
-import mongoose from 'mongoose';
-import { TransactionType } from '../models/Transaction';
-
 export interface CreateTransactionInput {
   walletId: mongoose.Types.ObjectId;
   type: TransactionType;

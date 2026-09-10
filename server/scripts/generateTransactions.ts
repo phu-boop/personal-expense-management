@@ -8,8 +8,10 @@ import Wallet from '../src/models/Wallet';
 import Transaction from '../src/models/Transaction';
 import { CATEGORY_CATALOG } from '../src/constants/categoryCatalog';
 
-const TOTAL = 250000; // target transactions to generate
+const TOTAL = 1_062_516; // target transactions to generate
 const BATCH_SIZE = 5000; // insert many per batch (tune for memory/perf)
+const EXPORT_START = new Date('2024-01-01T00:00:00.000Z');
+const EXPORT_END = new Date('2024-12-31T00:00:00.000Z');
 
 function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -24,6 +26,16 @@ function randomAmount(): string {
 function randomCategory(type: 'INCOME' | 'EXPENSE') {
   const items = CATEGORY_CATALOG.filter((category) => category.type === type);
   return items[randInt(0, items.length - 1)]._id;
+}
+
+function buildDateForIndex(globalIndex: number, total: number): Date {
+  // Use a window that's 1ms shorter than the inclusive range to guarantee
+  // generated timestamps are strictly less than EXPORT_END. This prevents
+  // boundary rounding issues where the last generated value could equal
+  // EXPORT_END and therefore be excluded by the `$lt: EXPORT_END` filter.
+  const windowMs = EXPORT_END.getTime() - EXPORT_START.getTime() - 1;
+  const offsetMs = Math.floor((globalIndex * windowMs) / total);
+  return new Date(EXPORT_START.getTime() + offsetMs);
 }
 
 const walletIds = [
@@ -78,24 +90,22 @@ async function main() {
       let insertedForWallet = 0;
       let batch: any[] = [];
       let netEffect = new Decimal(0);
+      let walletOffset = 0;
 
       for (let j = 0; j < count; j += 1) {
-        // pick type and amount
+        const globalIndex = totalInserted + walletOffset;
+        walletOffset += 1;
+
         let type = Math.random() < 0.5 ? 'INCOME' : 'EXPENSE';
         const amountStr = randomAmount();
         const amountDec = new Decimal(amountStr);
 
-        // Prevent negative: if expense and would go negative, convert to income
         if (type === 'EXPENSE' && runningBalance.minus(amountDec).isNegative()) {
           type = 'INCOME';
         }
 
         const effect = type === 'INCOME' ? amountDec : amountDec.negated();
-
-        // Generate a timestamp within the target day (2026-09-02) with random time
-        const targetDayStart = new Date('2026-09-02T00:00:00.000Z').getTime();
-        const msIntoDay = Math.floor(Math.random() * 24 * 60 * 60 * 1000);
-        const date = new Date(targetDayStart + msIntoDay);
+        const date = buildDateForIndex(globalIndex, TOTAL);
 
         const doc = {
           tenantId: tenantId,

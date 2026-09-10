@@ -13,7 +13,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: mongoose.Types.ObjectId;
     email: string;
-    tenantId?: mongoose.Types.ObjectId;
+    tenantId: mongoose.Types.ObjectId;
   };
 }
 

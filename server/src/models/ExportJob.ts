@@ -23,6 +23,8 @@ export interface IExportJob extends Document {
   format: ExportFormat;
   status: ExportJobStatus;
   fileKey?: string;
+  pages?: number;
+  totalPages?: number;
   snapshotAt?: Date;
   error?: string;
   createdAt: Date;
@@ -44,6 +46,8 @@ const ExportJobSchema = new Schema<IExportJob>(
       index: true,
     },
     fileKey: { type: String },
+    pages: { type: Number, default: 0 },
+    totalPages: { type: Number, default: 0 },
     snapshotAt: { type: Date },
     error: { type: String },
   },
