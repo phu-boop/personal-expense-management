@@ -72,6 +72,20 @@ interface Wallet {
 
 const PAGE_SIZE = 20;
 
+const addDaysToDateString = (value: string, days: number) => {
+  if (!value) return value;
+
+  const [year, month, day] = value.split('-').map(Number);
+  const next = new Date(year, (month || 1) - 1, day || 1);
+  next.setDate(next.getDate() + days);
+
+  const yyyy = next.getFullYear();
+  const mm = String(next.getMonth() + 1).padStart(2, '0');
+  const dd = String(next.getDate()).padStart(2, '0');
+
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 const Statement: React.FC = () => {
   const [summary, setSummary] = useState<Summary>({
     openingBalance: 0,
@@ -170,7 +184,7 @@ const Statement: React.FC = () => {
 
       const params: any = {
         from: startDate,
-        to: endDate,
+        to: addDaysToDateString(endDate, 1),
         limit: PAGE_SIZE,
       };
       if (cursorOverride) params.cursor = cursorOverride;
@@ -266,7 +280,7 @@ const Statement: React.FC = () => {
       const payload = {
         walletId: walletId || undefined,
         startDate,
-        endDate,
+        endDate: addDaysToDateString(endDate, 1),
         format,
       };
 

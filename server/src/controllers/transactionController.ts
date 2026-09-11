@@ -5,7 +5,8 @@ import * as txService from '../services/transactionService';
 import { AuthRequest } from '../middleware/auth';
 
 export const createTransaction = async (req: AuthRequest, res: Response) => {
-  const walletId = req.params.walletId;
+  const walletParam = Array.isArray(req.params.walletId) ? req.params.walletId[0] : req.params.walletId;
+  const walletId = walletParam;
   const date = validator.parseDate(req.body.date);
   const amount = validator.parseAmount(req.body.amount);
   const type = validator.validateTransactionType(req.body.type);
@@ -30,8 +31,10 @@ export const createTransaction = async (req: AuthRequest, res: Response) => {
 };
 
 export const editTransaction = async (req: AuthRequest, res: Response) => {
-  const walletId = req.params.walletId;
-  const txId = validator.normalizeTransactionId(req.params.transactionId);
+  const walletParam = Array.isArray(req.params.walletId) ? req.params.walletId[0] : req.params.walletId;
+  const walletId = walletParam;
+  const txParam = Array.isArray(req.params.transactionId) ? req.params.transactionId[0] : req.params.transactionId;
+  const txId = validator.normalizeTransactionId(txParam);
   const date = req.body.date ? validator.parseDate(req.body.date) : undefined;
   const amount = req.body.amount ? validator.parseAmount(req.body.amount) : undefined;
   const category = req.body.category ? validator.normalizeCategory(req.body.category) : undefined;
@@ -55,7 +58,8 @@ export const editTransaction = async (req: AuthRequest, res: Response) => {
 };
 
 export const listTransactions = async (req: AuthRequest, res: Response) => {
-  const walletId = new mongoose.Types.ObjectId(req.params.walletId);
+  const walletParam = Array.isArray(req.params.walletId) ? req.params.walletId[0] : req.params.walletId;
+  const walletId = new mongoose.Types.ObjectId(walletParam);
   const limit = validator.parseLimit(req.query.limit);
   const cursor = validator.decodeCursor(req.query.cursor as string | undefined);
   const from = req.query.from ? validator.parseDate(req.query.from) : undefined;

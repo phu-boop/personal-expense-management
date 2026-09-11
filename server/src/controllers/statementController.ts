@@ -7,7 +7,8 @@ export const getStatement = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId as mongoose.Types.ObjectId;
     const userId = (req as any).user?.id as mongoose.Types.ObjectId;
-    const walletId = new mongoose.Types.ObjectId(req.params.walletId);
+    const walletParam = Array.isArray(req.params.walletId) ? req.params.walletId[0] : req.params.walletId;
+    const walletId = new mongoose.Types.ObjectId(walletParam);
 
     const from = parseDate(req.query.from as string);
     const to = parseDate(req.query.to as string);

@@ -65,7 +65,7 @@ const resolveCategoryName = (category: any, categoryMap: Record<string, string>)
 };
 
 export function sumChunkPageCounts(pageCounts: Array<number | null | undefined>): number {
-  return pageCounts.reduce((sum, count) => sum + Math.max(0, Number(count ?? 0)), 0);
+  return pageCounts.reduce<number>((sum, count) => sum + Math.max(0, Number(count ?? 0)), 0);
 }
 
 async function mergePdfFiles(inputFiles: string[], outputFile: string): Promise<void> {
@@ -217,6 +217,8 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
     // totals and running balance
     let totalIncome = new Decimal(0);
     let totalExpense = new Decimal(0);
+    let precomputedTotalIncome = new Decimal(0);
+    let precomputedTotalExpense = new Decimal(0);
     let running = opening;
     let totalsPrecomputed = false;
 
@@ -234,8 +236,8 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
         } },
       ]).exec();
       if (Array.isArray(agg) && agg.length === 1) {
-        totalIncome = toDecimal(agg[0].income ?? 0);
-        totalExpense = toDecimal(agg[0].expense ?? 0);
+        precomputedTotalIncome = toDecimal(agg[0].income ?? 0);
+        precomputedTotalExpense = toDecimal(agg[0].expense ?? 0);
         totalsPrecomputed = true;
       }
     } catch (e) {
@@ -304,8 +306,8 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
           // total income/expense immediately (useful for large exports).
           if (totalsPrecomputed) {
             doc.moveDown();
-            doc.fontSize(10).text(`Total income: ${formatMoneyWithoutCurrency(totalIncome)}`);
-            doc.text(`Total expense: ${formatMoneyWithoutCurrency(totalExpense)}`);
+            doc.fontSize(10).text(`Total income: ${formatMoneyWithoutCurrency(precomputedTotalIncome)}`);
+            doc.text(`Total expense: ${formatMoneyWithoutCurrency(precomputedTotalExpense)}`);
             doc.moveDown();
           }
           doc.moveDown();
@@ -359,8 +361,8 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
 
         if (includeTotals) {
           // Align totals with the table left margin (`startX`) for consistent layout
-          const incomeForPrint = totalsPrecomputed ? totalIncome : totalIncome;
-          const expenseForPrint = totalsPrecomputed ? totalExpense : totalExpense;
+          const incomeForPrint = totalsPrecomputed ? precomputedTotalIncome : totalIncome;
+          const expenseForPrint = totalsPrecomputed ? precomputedTotalExpense : totalExpense;
           chunk.doc.fontSize(10).text(`Total income: ${formatMoneyWithoutCurrency(incomeForPrint)}`, chunk.startX, totalsY, { width: 260 });
           chunk.doc.text(`Total expense: ${formatMoneyWithoutCurrency(expenseForPrint)}`, chunk.startX, totalsY + 16, { width: 260 });
           chunk.doc.text(`Ending balance: ${formatMoneyWithoutCurrency(opening.plus(incomeForPrint).minus(expenseForPrint))}`, chunk.startX, totalsY + 32, { width: 260 });
@@ -504,9 +506,9 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
       // Top summary formulas (rows 7-9) — Excel will evaluate these on open.
       // If we precomputed totals via aggregation, set the `result` so the
       // values appear immediately (clients that don't auto-calc will still see them).
-      const precomputedIncomeResult = totalsPrecomputed ? Number(totalIncome.toFixed(2)) : 0;
-      const precomputedExpenseResult = totalsPrecomputed ? Number(totalExpense.toFixed(2)) : 0;
-      const precomputedEndingResult = totalsPrecomputed ? Number(opening.plus(totalIncome).minus(totalExpense).toFixed(2)) : 0;
+      const precomputedIncomeResult = totalsPrecomputed ? Number(precomputedTotalIncome.toFixed(2)) : 0;
+      const precomputedExpenseResult = totalsPrecomputed ? Number(precomputedTotalExpense.toFixed(2)) : 0;
+      const precomputedEndingResult = totalsPrecomputed ? Number(opening.plus(precomputedTotalIncome).minus(precomputedTotalExpense).toFixed(2)) : 0;
       // Sum Income in column C where Type in column B equals 'Income'.
       sheet.addRow(['Total income', { formula: 'SUMIF(B:B,"Income",C:C)', result: precomputedIncomeResult } as any]).commit();
       sheet.addRow(['Total expense', { formula: 'SUMIF(B:B,"Expense",C:C)', result: precomputedExpenseResult } as any]).commit();

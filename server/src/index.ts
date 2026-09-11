@@ -20,6 +20,15 @@ import config from './config';
 const app = express();
 const port = Number(config.PORT);
 
+app.get('/api/ready', (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: 'server',
+    mongo: String(config.MONGO_URI),
+    redis: String(config.REDIS_URL),
+  });
+});
+
 app.use(
   cors({
     origin: "http://localhost:5173",

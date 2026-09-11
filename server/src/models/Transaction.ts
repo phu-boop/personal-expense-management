@@ -35,5 +35,7 @@ const TransactionSchema = new Schema<ITransaction>(
 TransactionSchema.index({ tenantId: 1, walletId: 1, date: 1, createdAt: 1, _id: 1 });
 TransactionSchema.index({ tenantId: 1, userId: 1, date: 1, createdAt: 1, _id: 1 });
 
+export type TransactionDocument = ITransaction & Document;
+
 export const Transaction = mongoose.model<ITransaction>('Transaction', TransactionSchema);
 export default Transaction;
