@@ -206,6 +206,27 @@ async function main() {
       const checkedRows: Array<number> = [];
       const passedRows: Array<number> = [];
 
+      const isFormulaResult = (candidate: unknown): candidate is { result?: unknown } => Boolean(
+        candidate && typeof candidate === 'object' && 'result' in (candidate as Record<string, unknown>)
+      );
+
+      const isNumericCell = (candidate: unknown): boolean => {
+        if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+          return true;
+        }
+
+        if (typeof candidate === 'string') {
+          const cleaned = candidate.replace(/,/g, '').trim();
+          return cleaned !== '' && cleaned !== 'null' && cleaned !== 'undefined' && Number.isFinite(Number(cleaned));
+        }
+
+        if (isFormulaResult(candidate)) {
+          return isNumericCell((candidate as { result?: unknown }).result);
+        }
+
+        return false;
+      };
+
       let fileOpening: Decimal | null = null;
       let fileTotalIncome: Decimal | null = null;
       let fileTotalExpense: Decimal | null = null;
@@ -245,7 +266,9 @@ async function main() {
             const amountCell = arr[2];
             const beforeCell = arr[5];
             const afterCell = arr[6];
-            if (amountCell === undefined || beforeCell === undefined || afterCell === undefined) continue;
+
+            if (!/^(income|expense)$/i.test(type)) continue;
+            if (!isNumericCell(amountCell) || !isNumericCell(beforeCell) || !isNumericCell(afterCell)) continue;
 
             const amount = toMoney(amountCell);
             const before = toMoney(beforeCell);

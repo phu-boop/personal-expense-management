@@ -7,7 +7,7 @@
     "test": "tsx --test \"tests/**/*.test.ts\"",
     "dev": "tsx watch src/index.ts",
     "seed": "tsx src/seed.ts",
-    "generate:transactions": "tsx scripts/generateTransactions.ts",
+    "generate:transactions": "tsx src/scripts/generateTransactions.ts",
     "benchmark:export": "tsx src/scripts/benchmark-export.ts",
     "build": "tsc",
     "start": "node dist/index.js",

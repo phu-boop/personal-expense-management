@@ -1,6 +1,8 @@
 import { createClient } from 'redis';
 import config from '../config';
 
+const redisClientCache = new Map<string, Promise<any>>();
+
 export function buildQueueKey(name: string) {
   return `expense_manager:${name}`;
 }
@@ -163,12 +165,20 @@ export function createRedisQueueClient(client: any) {
 }
 
 export async function createRedisQueueFromEnvironment(redisUrl = config.REDIS_URL) {
-  const redisClient = createClient({ url: redisUrl });
-  redisClient.on('error', (error) => {
-    console.error('Redis queue error:', error);
-  });
-  await redisClient.connect();
-  // Only expose atomic helpers when the underlying client actually implements them.
+  if (!redisClientCache.has(redisUrl)) {
+    const clientPromise = (async () => {
+      const redisClient = createClient({ url: redisUrl });
+      redisClient.on('error', (error) => {
+        console.error('Redis queue error:', error);
+      });
+      await redisClient.connect();
+      return redisClient;
+    })();
+    redisClientCache.set(redisUrl, clientPromise);
+  }
+
+  const redisClient = await redisClientCache.get(redisUrl)!;
+
   const clientWrapper: any = {
     lPush: async (key: string, value: string) => redisClient.lPush(key, value),
     rPop: async (key: string) => redisClient.rPop(key),
