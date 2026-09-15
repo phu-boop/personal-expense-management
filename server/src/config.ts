@@ -12,7 +12,7 @@ export const MONGO_URI = mongoUri || LOCAL_MONGO_URI;
 export const REDIS_URL = redisUrl || LOCAL_REDIS_URL;
 export const JWT_SECRET = process.env.JWT_SECRET?.trim() ?? '';
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim() ?? '';
-export const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173';
+export const CORS_ORIGIN = process.env.CORS_ORIGIN;
 
 export const EXPORT_DIR = process.env.EXPORT_DIR ?? 'exports';
 
