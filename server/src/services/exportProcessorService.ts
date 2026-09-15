@@ -532,6 +532,8 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
       {
         const cursorStream = Transaction.find(match).sort({ date: 1, createdAt: 1, _id: 1 }).lean().cursor();
         let seen = 0;
+        const logEvery = Number(process.env.EXPORT_XLSX_PROGRESS_LOG_EVERY ?? '10000');
+        console.log('[XLSX export] starting row stream', { jobId: String(jobId), walletId: String(walletId), logEvery });
         for await (const t of cursorStream) {
           seen += 1;
           const amount = toDecimal(t.amount);
@@ -555,12 +557,22 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
             Number(after.toFixed(2)),
           ]).commit();
 
+          if (seen % logEvery === 0 || seen === 1) {
+            console.log('[XLSX export] progress', {
+              jobId: String(jobId),
+              walletId: String(walletId),
+              rowsWritten: seen,
+              rowsPerLog: logEvery,
+            });
+          }
+
           if (XLSX_PROGRESS_CHECKPOINTS.includes(seen) || seen % 10_000 === 0) {
             if ((global as any).gc) {
               (global as any).gc();
             }
           }
         }
+        console.log('[XLSX export] row stream complete', { jobId: String(jobId), walletId: String(walletId), rowsWritten: seen });
       }
 
       // after iterating, write totals and finalize
@@ -576,6 +588,7 @@ export default async function exportProcessorService({ jobId, storage }: ExportJ
       const res = await storage.put(`statement-${String(jobId)}.xlsx`, read);
       try { fs.unlinkSync(tmpPath); } catch {}
 
+      console.log('[XLSX export] finished', { jobId: String(jobId), walletId: String(walletId), fileKey: res.fileKey, status: ExportJobStatus.COMPLETED });
       job.fileKey = res.fileKey;
       job.status = ExportJobStatus.COMPLETED;
       await job.save();

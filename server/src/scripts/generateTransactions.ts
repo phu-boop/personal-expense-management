@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import Decimal from 'decimal.js';
-import jwt from 'jsonwebtoken';
 
 import config from '../config';
 import Wallet from '../models/Wallet';
@@ -12,8 +11,9 @@ import { CATEGORY_CATALOG } from '../constants/categoryCatalog';
 import { toDecimal, toDecimal128 } from '../utils/money';
 import { createSnapshotIfNeeded } from '../workers/snapshotWorker';
 
-const BENCHMARK_NAMES = ['benchmark-wallet-1', 'benchmark-wallet-2', 'benchmark-wallet-3', 'benchmark-wallet-4'];
-const PER_WALLET = Number(process.env.GEN_PER_WALLET ?? '100000');
+const BENCHMARK_WALLET_COUNT = Number(process.env.GEN_WALLETS ?? '10');
+const BENCHMARK_NAMES = Array.from({ length: BENCHMARK_WALLET_COUNT }, (_, index) => `benchmark-wallet-${index + 1}`);
+const PER_WALLET = Number(process.env.GEN_PER_WALLET ?? '1200000');
 const TOTAL = PER_WALLET * BENCHMARK_NAMES.length;
 const DIRECT_BATCH_SIZE = Number(process.env.GEN_BATCH_SIZE ?? '2000');
 const SNAPSHOT_API_EVERY = Number(process.env.GEN_SNAPSHOT_EVERY ?? '20000');
@@ -38,6 +38,26 @@ function buildDateForIndex(globalIndex: number, total: number): Date {
   const windowMs = EXPORT_END.getTime() - EXPORT_START.getTime() - 1;
   const offsetMs = Math.floor((globalIndex * windowMs) / total);
   return new Date(EXPORT_START.getTime() + offsetMs);
+}
+
+function buildBalanceAwareTransaction(currentBalance: Decimal): { type: TransactionType; amount: Decimal } {
+  const amount = new Decimal(randomAmount());
+  let type = Math.random() < 0.5 ? TransactionType.INCOME : TransactionType.EXPENSE;
+
+  if (type === TransactionType.EXPENSE) {
+    const minSafeBalance = new Decimal(1);
+    if (currentBalance.lte(minSafeBalance)) {
+      type = TransactionType.INCOME;
+      return { type, amount: new Decimal(Math.min(amount.toNumber(), 100000)) };
+    }
+
+    const maxExpense = currentBalance.minus(minSafeBalance);
+    if (amount.gt(maxExpense)) {
+      return { type: TransactionType.EXPENSE, amount: maxExpense };
+    }
+  }
+
+  return { type, amount };
 }
 
 async function ensureTenantAndUser() {
@@ -90,43 +110,6 @@ async function ensureWalletForUser(name: string, tenantId: mongoose.Types.Object
   );
 }
 
-async function triggerSnapshotCheck(wallet: any, user: any) {
-  const jwtSecret = ((process.env.JWT_SECRET ?? process.env.JWT) || '') as string;
-  const token = jwtSecret
-    ? jwt.sign({ id: String(user._id), email: user.email, tenantId: String(wallet.tenantId) }, jwtSecret, { expiresIn: '1h' })
-    : null;
-
-  const url = `http://localhost:${process.env.PORT ?? '5000'}/api/wallets/${String(wallet._id)}/transactions`;
-  const payload = {
-    type: TransactionType.INCOME,
-    amount: '1',
-    date: new Date('2024-06-01T00:00:00.000Z').toISOString(),
-    note: 'snapshot-check-trigger',
-  };
-
-  if (token) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        return res.json();
-      }
-
-      const text = await res.text().catch(() => '');
-      console.warn(`[generateTransactions] snapshot API rejected wallet ${wallet._id}: ${res.status} ${text}; falling back to direct snapshot worker`);
-    } catch (err) {
-      console.warn(`[generateTransactions] snapshot API failed for wallet ${wallet._id}: ${String(err)}; falling back to direct snapshot worker`);
-    }
-  }
-
-  const snapshot = await createSnapshotIfNeeded(wallet._id, { tenantId: wallet.tenantId });
-  return snapshot;
-}
-
 async function refreshWalletBalance(walletId: mongoose.Types.ObjectId, tenantId: mongoose.Types.ObjectId, userId: mongoose.Types.ObjectId) {
   const result = await Transaction.aggregate([
     { $match: { tenantId, userId, walletId } },
@@ -141,10 +124,11 @@ async function refreshWalletBalance(walletId: mongoose.Types.ObjectId, tenantId:
   const wallet = await Wallet.findOne({ _id: walletId, tenantId, userId }).lean();
   const initial = toDecimal(wallet?.initialBalance ?? '0');
   const nextBalance = initial.plus(totalEffect);
+  const safeBalance = nextBalance.isNegative() ? new Decimal(0) : nextBalance;
 
   await Wallet.findOneAndUpdate(
     { _id: walletId, tenantId, userId },
-    { $set: { currentBalance: toDecimal128(nextBalance.toFixed(2)), version: (wallet?.version ?? 0) + 1 } },
+    { $set: { currentBalance: toDecimal128(safeBalance.toFixed(2)), version: (wallet?.version ?? 0) + 1 } },
   );
 }
 
@@ -156,6 +140,7 @@ async function main() {
     const { tenant, user } = await ensureTenantAndUser();
     const walletIds: string[] = [];
     let totalInserted = 0;
+    let lastGeneratedDate = new Date(EXPORT_START.getTime() - 1);
 
     for (const name of BENCHMARK_NAMES) {
       const wallet = await ensureWalletForUser(name, tenant._id, user._id);
@@ -164,18 +149,28 @@ async function main() {
       const per = PER_WALLET;
       let insertedForWallet = 0;
       let batch: Array<any> = [];
+      let currentBalance = toDecimal(wallet.currentBalance ?? '1000000');
 
       for (let i = 0; i < per; i += 1) {
         const globalIndex = totalInserted + i;
-        const type = Math.random() < 0.5 ? TransactionType.INCOME : TransactionType.EXPENSE;
-        const amountStr = randomAmount();
-        const date = buildDateForIndex(globalIndex, TOTAL);
+        const { type, amount } = buildBalanceAwareTransaction(currentBalance);
+        const rawDate = buildDateForIndex(globalIndex, TOTAL);
+        const date = rawDate.getTime() <= lastGeneratedDate.getTime()
+          ? new Date(lastGeneratedDate.getTime() + 1)
+          : rawDate;
+        lastGeneratedDate = date;
+
+        if (type === TransactionType.INCOME) {
+          currentBalance = currentBalance.plus(amount);
+        } else {
+          currentBalance = currentBalance.minus(amount);
+        }
 
         batch.push({
           tenantId: tenant._id,
           userId: user._id,
           walletId: wallet._id,
-          amount: toDecimal128(amountStr),
+          amount: toDecimal128(amount.toFixed(0)),
           type,
           category: randomCategory(type),
           date,
@@ -189,8 +184,8 @@ async function main() {
           batch = [];
 
           if (insertedForWallet % SNAPSHOT_API_EVERY === 0) {
-            await triggerSnapshotCheck(wallet, user);
-            console.log(`snapshot-check trigger sent after ${insertedForWallet} tx for wallet ${name}`);
+            const snapshotResult = await createSnapshotIfNeeded(wallet._id, { tenantId: tenant._id });
+            console.log(`snapshot checked after ${insertedForWallet} tx for wallet ${name}:`, snapshotResult);
           }
         }
       }
@@ -200,6 +195,11 @@ async function main() {
         insertedForWallet += batch.length;
         totalInserted += batch.length;
         batch = [];
+      }
+
+      if (insertedForWallet > 0 && insertedForWallet % SNAPSHOT_API_EVERY !== 0) {
+        const snapshotResult = await createSnapshotIfNeeded(wallet._id, { tenantId: tenant._id });
+        console.log(`final snapshot check for wallet ${name} after ${insertedForWallet} tx:`, snapshotResult);
       }
 
       await refreshWalletBalance(wallet._id, tenant._id, user._id);

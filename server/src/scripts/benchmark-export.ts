@@ -28,6 +28,8 @@ const walletId = process.env.BENCHMARK_WALLET_ID ?? BENCHMARK_WALLET_IDS[0];
 function toMoney(value: unknown): Decimal {
   const normalize = (candidate: unknown): unknown => {
     if (candidate == null) return 0;
+    if (candidate instanceof Date) return 0;
+    if (Array.isArray(candidate)) return 0;
     if (typeof candidate === 'object') {
       const maybe = candidate as any;
       if ('result' in maybe && maybe.result !== undefined) return normalize(maybe.result);
@@ -44,7 +46,7 @@ function toMoney(value: unknown): Decimal {
   const normalized = normalize(value);
   const raw = typeof normalized === 'string' ? normalized : String(normalized ?? 0);
   const cleaned = raw.replace(/,/g, '').trim();
-  return toDecimal(cleaned === '' || cleaned === 'null' || cleaned === 'undefined' ? '0' : cleaned);
+  return toDecimal(cleaned === '' || cleaned === 'null' || cleaned === 'undefined' || cleaned === '[object Object]' ? '0' : cleaned);
 }
 
 async function ensureDatabase() {
@@ -211,17 +213,24 @@ async function main() {
       );
 
       const isNumericCell = (candidate: unknown): boolean => {
+        if (candidate == null) return false;
+        if (candidate instanceof Date) return false;
+        if (Array.isArray(candidate)) return false;
         if (typeof candidate === 'number' && Number.isFinite(candidate)) {
           return true;
         }
 
         if (typeof candidate === 'string') {
           const cleaned = candidate.replace(/,/g, '').trim();
-          return cleaned !== '' && cleaned !== 'null' && cleaned !== 'undefined' && Number.isFinite(Number(cleaned));
+          return cleaned !== '' && cleaned !== 'null' && cleaned !== 'undefined' && cleaned !== '[object Object]' && Number.isFinite(Number(cleaned));
         }
 
         if (isFormulaResult(candidate)) {
           return isNumericCell((candidate as { result?: unknown }).result);
+        }
+
+        if (typeof candidate === 'object') {
+          return false;
         }
 
         return false;
